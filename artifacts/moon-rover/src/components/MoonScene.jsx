@@ -34,7 +34,9 @@ function Terrain({ wireframe }) {
       ) : (
         <meshStandardMaterial
           vertexColors
-          /* Flat neon-grey — no texture patterns, colour comes from vertex colours */
+          map={_regolithTex}
+          normalMap={_normalMap}
+          normalScale={[0.18, 0.18]}
           roughness={0.88}
           metalness={0.04}
           envMapIntensity={0.0}
