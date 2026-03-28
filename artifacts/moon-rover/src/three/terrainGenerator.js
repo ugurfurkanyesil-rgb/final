@@ -164,31 +164,15 @@ export function createLunarNormalMap(size = 256) {
   const img = ctx.createImageData(size, size);
   const d   = img.data;
 
-  // Seamless integer-k frequencies for size=256
-  const TP = Math.PI * 2;
-  const g1 = TP *  6 / size;  // ≈ 0.147 — coarse bumps
-  const g2 = TP * 13 / size;  // ≈ 0.319 — medium bumps
-  const g3 = TP * 29 / size;  // ≈ 0.712 — fine bumps
-
-  // Seamless height function for normal generation
-  const H = (x, y) =>
-    Math.sin(x * g1 + 1.1) * Math.cos(y * g1 + 2.2) * 0.55 +
-    Math.sin(x * g2 + 3.5) * Math.cos(y * g2 + 0.7) * 0.28 +
-    Math.sin(x * g3 + 0.8) * Math.cos(y * g3 + 4.3) * 0.12;
-
-  const eps = 1.0;
+  // Flat / neutral normal map — (128, 128, 255) everywhere = zero perturbation.
+  // Keeps the normalMap slot active so geometry shading is unaffected,
+  // but adds NO repeating surface-wave patterns of its own.
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
-      const i  = (py * size + px) * 4;
-      const hL = H(px - eps, py), hR = H(px + eps, py);
-      const hD = H(px, py - eps), hU = H(px, py + eps);
-      const strength = 14.0;
-      const nx = (hL - hR);
-      const nz = (hD - hU);
-      const len = Math.sqrt(nx * nx + nz * nz + 1 / (strength * strength));
-      d[i]   = Math.round(128 + (nx / len) * 127);
-      d[i+1] = Math.round(128 + (nz / len) * 127);
-      d[i+2] = 255;
+      const i = (py * size + px) * 4;
+      d[i]   = 128;  // X = 0
+      d[i+1] = 128;  // Y = 0
+      d[i+2] = 255;  // Z = up
       d[i+3] = 255;
     }
   }
