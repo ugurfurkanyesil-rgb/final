@@ -1,0 +1,80 @@
+I want you to build a full-stack interactive web simulation project.
+
+Tech stack:
+- React (Vite)
+- Three.js (or React Three Fiber)
+- JavaScript (no TypeScript unless necessary)
+- Simple Node.js backend (optional, only if needed)
+
+PROJECT GOAL:
+Create a 3D Moon surface simulation with a controllable rover, and integrate it with a 2D map UI.
+
+FEATURES:
+
+1. 3D MOON ENVIRONMENT
+- Create a realistic Moon terrain using height maps or procedural generation
+- Use grayscale displacement map for craters
+- Apply realistic textures (gray, dusty surface)
+- Add lighting similar to space (strong directional light like the Sun)
+- Add shadows
+
+2. ROVER SIMULATION
+- Load a 3D rover model (GLTF/GLB)
+- Add movement controls:
+  - W/A/S/D or Arrow keys
+  - Smooth acceleration/deceleration
+- Add camera modes:
+  - Third-person follow camera
+  - Free camera toggle
+- Add basic physics (no need for full physics engine, simple movement is fine)
+
+3. MAP INTEGRATION (IMPORTANT)
+- Add a 2D top-down mini-map (like radar)
+- Show rover position in real-time
+- Sync 3D coordinates with 2D map coordinates
+- Normalize coordinates (x,z → map position)
+- Optional: clickable map to move rover target
+
+4. UI (React)
+- Clean UI panel showing:
+  - Coordinates (X, Y, Z)
+  - Speed
+  - Direction
+- Buttons:
+  - Reset position
+  - Toggle camera
+  - Toggle wireframe (debug)
+
+5. PERFORMANCE
+- Use optimized rendering
+- Limit polygon count
+- Use lazy loading for models
+
+6. STRUCTURE
+- Organize project:
+  /src
+    /components
+    /three
+    /utils
+- Separate logic for:
+  - rover controller
+  - terrain generator
+  - map sync
+
+7. BONUS (if possible)
+- Add path tracking (draw rover path)
+- Add simple obstacle rocks
+- Add collision detection
+
+IMPORTANT:
+- Write clean, modular, readable code
+- Add comments explaining logic
+- Make it runnable immediately in Replit
+- If assets are needed, use free CDN or placeholders
+
+OUTPUT:
+- Full working project
+- All files included
+- Clear instructions to run
+Use React Three Fiber instead of raw Three.js if it simplifies development.
+Prefer simplicity over complexity but keep the simulation realistic.
