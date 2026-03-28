@@ -14,8 +14,8 @@ const TURN_SPD     = 2.2;
 const HALF         = TERRAIN_SIZE / 2 - 2;
 const AUTO_SPD     = 6.0;
 const WP_REACH     = 2.0;   // Generous reach radius so rover never stalls on waypoints
-const ROVER_SCALE  = 5.0;
-const ROVER_Y_OFF  = 0.68 * ROVER_SCALE * 0.2; // wheel bottom at 0.04-0.175 → offset ≈0.7 world units
+const ROVER_SCALE  = 1.67;
+const ROVER_Y_OFF  = 0.135 * ROVER_SCALE + 0.05; // wheel bottom (0.04-0.175)*scale + small clearance
 
 // ---- Hard crater guard ----
 // Returns true if a world position is inside a crater bowl (impassable).

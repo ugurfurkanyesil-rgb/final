@@ -142,7 +142,7 @@ function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningM
   useFrame(({ clock }) => update(clock.getElapsedTime() * 1000));
   return (
     <group ref={roverRef}>
-      <group scale={[5, 5, 5]}>
+      <group scale={[1.67, 1.67, 1.67]}>
         <RoverBody wireframe={wireframe} />
       </group>
     </group>
