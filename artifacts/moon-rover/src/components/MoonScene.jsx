@@ -6,7 +6,7 @@
 
 import { useRef, useEffect, useMemo, Suspense } from 'react';
 import { Canvas, useFrame, useLoader } from '@react-three/fiber';
-import { OrbitControls, Stars } from '@react-three/drei';
+import { OrbitControls, Stars, useTexture } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
 import {
@@ -69,13 +69,15 @@ function RoverSTL({ wireframe }) {
     const colors = new Float32Array(pos.count * 3);
     const c = new THREE.Color();
 
+    // Wheels zone ≈ bottom 20%; rest is bronze body
     const ZONES = [
-      { t: 0.00, hex: '#1a1a1a' }, // wheels — near black
-      { t: 0.18, hex: '#e02020' }, // lower chassis — Turkish red
-      { t: 0.42, hex: '#cc2020' }, // mid chassis — deeper red
-      { t: 0.60, hex: '#d8d8cc' }, // body — warm silver
-      { t: 0.80, hex: '#1c3aaa' }, // upper body — cobalt blue (solar panels)
-      { t: 1.00, hex: '#ffffff' }, // very top — white highlight
+      { t: 0.00, hex: '#111111' }, // wheels — near black
+      { t: 0.18, hex: '#1a1a1a' }, // wheel top edge — near black
+      { t: 0.22, hex: '#6b3a1f' }, // transition to bronze
+      { t: 0.40, hex: '#b87333' }, // classic bronze
+      { t: 0.65, hex: '#cd9b50' }, // lighter bronze highlight
+      { t: 0.85, hex: '#b87333' }, // back to bronze
+      { t: 1.00, hex: '#8b5c20' }, // dark bronze top
     ];
 
     for (let i = 0; i < pos.count; i++) {
@@ -122,6 +124,89 @@ function RoverBody({ wireframe }) {
   );
 }
 
+// ---- Turkish Flag Texture (canvas-drawn) ----
+function makeTurkishFlagTexture() {
+  const W = 300, H = 200;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Red background
+  ctx.fillStyle = '#E30A17';
+  ctx.fillRect(0, 0, W, H);
+
+  // White crescent
+  const cx = W * 0.38, cy = H * 0.5, r1 = H * 0.30;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r1, 0, Math.PI * 2);
+  ctx.fill();
+  // Inner red circle to carve crescent
+  ctx.fillStyle = '#E30A17';
+  ctx.beginPath();
+  ctx.arc(cx + r1 * 0.32, cy, r1 * 0.78, 0, Math.PI * 2);
+  ctx.fill();
+
+  // White star (5-pointed)
+  const sx = cx + r1 * 1.0, sy = cy;
+  const sr = H * 0.12;
+  ctx.fillStyle = '#ffffff';
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(-Math.PI / 2);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = (i * 4 * Math.PI) / 5;
+    const x = sr * Math.cos(angle), y = sr * Math.sin(angle);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  return new THREE.CanvasTexture(canvas);
+}
+
+const PERIAPSIS_FLAG_URL = `${import.meta.env.BASE_URL}periapsis_flag.png`;
+
+function TurkishFlag({ position }) {
+  const tex = useMemo(() => makeTurkishFlagTexture(), []);
+  const FW = 0.55, FH = 0.37;
+  return (
+    <group position={position}>
+      {/* Pole */}
+      <mesh position={[0, 0.40, 0]}>
+        <cylinderGeometry args={[0.012, 0.012, 0.80, 6]} />
+        <meshStandardMaterial color="#aaaaaa" metalness={0.7} roughness={0.3} />
+      </mesh>
+      {/* Flag plane */}
+      <mesh position={[FW / 2, 0.72, 0]}>
+        <planeGeometry args={[FW, FH]} />
+        <meshStandardMaterial map={tex} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function PeriapsisFlag({ position }) {
+  const tex = useTexture(PERIAPSIS_FLAG_URL);
+  const FW = 0.55, FH = 0.37;
+  return (
+    <group position={position}>
+      {/* Pole */}
+      <mesh position={[0, 0.40, 0]}>
+        <cylinderGeometry args={[0.012, 0.012, 0.80, 6]} />
+        <meshStandardMaterial color="#aaaaaa" metalness={0.7} roughness={0.3} />
+      </mesh>
+      {/* Flag plane — dark bg matches the logo */}
+      <mesh position={[FW / 2, 0.72, 0]}>
+        <planeGeometry args={[FW, FH]} />
+        <meshStandardMaterial map={tex} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
 function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningModel, wireframe, initPos }) {
   const { update } = useRoverController(roverRef, setRoverState, pathRef, activeRoute, learningModel);
 
@@ -137,6 +222,11 @@ function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningM
     <group ref={roverRef}>
       <group scale={[5.01, 5.01, 5.01]}>
         <RoverBody wireframe={wireframe} />
+        {/* Flags sit in model-space (0–1.4 units), scaled with rover */}
+        <Suspense fallback={null}>
+          <TurkishFlag   position={[-0.26, 1.15, 0.10]} />
+          <PeriapsisFlag position={[ 0.26, 1.15, 0.10]} />
+        </Suspense>
       </group>
     </group>
   );
