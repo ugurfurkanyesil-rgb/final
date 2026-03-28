@@ -168,7 +168,7 @@ const TRACK_W         = 0.17;
 const TRACK_L         = 0.17;   // segment length (gap = TRACK_STEP - TRACK_L = 0.17 m)
 const WHEEL_OFFSET    = 0.852;
 const TRACK_LIFT      = 0.022;
-const TRACK_LIFE_MS   = 2000;   // marks disappear 2 s after placement
+const TRACK_LIFE_MS   = 1000;   // marks disappear 1 s after placement
 
 const _ZERO_MTX = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -256,6 +256,116 @@ function WheelTracks({ roverRef }) {
         polygonOffset
         polygonOffsetFactor={-4}
         polygonOffsetUnits={-4}
+      />
+    </instancedMesh>
+  );
+}
+
+// ---- Dust Particles ----
+const MAX_DUST       = 280;
+const DUST_LIFE_MS   = 1400;  // each particle lives ~1.4 s
+const DUST_SPAWN_D   = 0.22;  // spawn every 22 cm of rover travel
+
+function DustParticles({ roverRef }) {
+  const meshRef   = useRef();
+  const dummy     = useMemo(() => new THREE.Object3D(), []);
+  const lastPos   = useRef(null);
+  const headRef   = useRef(0);
+
+  // Per-particle buffers (TypedArrays for speed)
+  const pActive = useRef(new Uint8Array(MAX_DUST));
+  const pBirth  = useRef(new Float64Array(MAX_DUST));
+  const pX      = useRef(new Float32Array(MAX_DUST));
+  const pY      = useRef(new Float32Array(MAX_DUST));
+  const pZ      = useRef(new Float32Array(MAX_DUST));
+  const pVX     = useRef(new Float32Array(MAX_DUST));
+  const pVY     = useRef(new Float32Array(MAX_DUST));
+  const pVZ     = useRef(new Float32Array(MAX_DUST));
+  const pS0     = useRef(new Float32Array(MAX_DUST)); // initial scale
+
+  useEffect(() => {
+    if (!meshRef.current) return;
+    for (let i = 0; i < MAX_DUST; i++) meshRef.current.setMatrixAt(i, _ZERO_MTX);
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  }, []);
+
+  useFrame((_, dt) => {
+    if (!meshRef.current) return;
+    const now  = performance.now();
+    let   dirty = false;
+
+    // Animate + expire existing particles
+    for (let i = 0; i < MAX_DUST; i++) {
+      if (!pActive.current[i]) continue;
+      const age = now - pBirth.current[i];
+      if (age > DUST_LIFE_MS) {
+        pActive.current[i] = 0;
+        meshRef.current.setMatrixAt(i, _ZERO_MTX);
+        dirty = true;
+        continue;
+      }
+      const t = age / DUST_LIFE_MS;           // 0 → 1
+      const sc = pS0.current[i] * (1 - t);   // linear shrink → vanish
+      pX.current[i] += pVX.current[i] * dt;
+      pY.current[i] += pVY.current[i] * dt;
+      pZ.current[i] += pVZ.current[i] * dt;
+      pVY.current[i] *= 0.96;                // decelerate rise
+      dummy.scale.set(sc, sc, sc);
+      dummy.position.set(pX.current[i], pY.current[i], pZ.current[i]);
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+      dirty = true;
+    }
+
+    // Spawn new puffs when rover moves
+    if (roverRef.current) {
+      const rpos = roverRef.current.position;
+      if (!lastPos.current) {
+        lastPos.current = rpos.clone();
+      } else {
+        const dx   = rpos.x - lastPos.current.x;
+        const dz   = rpos.z - lastPos.current.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist >= DUST_SPAWN_D) {
+          const fx = dx / dist, fz = dz / dist;
+          const count = 4 + Math.floor(Math.random() * 3); // 4–6 particles
+          for (let k = 0; k < count; k++) {
+            const i = headRef.current;
+            headRef.current = (headRef.current + 1) % MAX_DUST;
+            // spawn at ground level behind rover, slight spread
+            pX.current[i] = rpos.x - fx * 0.55 + (Math.random() - 0.5) * 0.7;
+            pY.current[i] = getTerrainHeight(rpos.x, rpos.z) + 0.05 + Math.random() * 0.1;
+            pZ.current[i] = rpos.z - fz * 0.55 + (Math.random() - 0.5) * 0.7;
+            pVX.current[i] = (Math.random() - 0.5) * 0.6;
+            pVY.current[i] = 0.18 + Math.random() * 0.45; // upward drift
+            pVZ.current[i] = (Math.random() - 0.5) * 0.6;
+            pS0.current[i] = 0.07 + Math.random() * 0.11;
+            pBirth.current[i] = now;
+            pActive.current[i] = 1;
+          }
+          lastPos.current.copy(rpos);
+          dirty = true;
+        }
+      }
+    }
+
+    if (dirty) meshRef.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[null, null, MAX_DUST]}
+      count={MAX_DUST}
+      frustumCulled={false}
+      renderOrder={4}
+    >
+      <sphereGeometry args={[1, 5, 4]} />
+      <meshBasicMaterial
+        color="#c8c0b0"
+        opacity={0.38}
+        transparent
+        depthWrite={false}
       />
     </instancedMesh>
   );
@@ -536,6 +646,7 @@ export default function MoonScene({
         initPos={roverState}
       />
       <WheelTracks roverRef={roverRef} />
+      <DustParticles roverRef={roverRef} />
 
       <CameraController roverRef={roverRef} cameraMode={cameraMode} orbitRef={orbitRef} />
 
