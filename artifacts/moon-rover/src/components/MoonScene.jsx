@@ -404,8 +404,6 @@ export default function MoonScene({
         <RouteLine key={mode} points={pts} color={ROUTE_COLORS[mode]} active={mode === activeRoute} />
       ))}
 
-      <TrailLine points={trail} />
-
       {/* Numbered waypoint markers */}
       {waypoints && waypoints.map((wp, i) => (
         <WaypointMarker key={i} pos={wp} idx={i} total={waypoints.length} />
