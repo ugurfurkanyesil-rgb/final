@@ -11,136 +11,117 @@ import { LearningModel } from './utils/learningModel';
 
 const MoonScene = lazy(() => import('./components/MoonScene'));
 
-function getTimestamp() {
+function ts() {
   return new Date().toLocaleTimeString('en-US', { hour12: false });
 }
 
+const DEFAULT_START = { x: -38, z: -38 };
+const DEFAULT_END   = { x:  38, z:  38 };
+
 export default function App() {
-  const [roverState, setRoverState] = useState({ x: -40, y: 0, z: -40, speed: 0, direction: 0, autoMode: false });
-  const [startPos, setStartPos]   = useState(null);
-  const [endPos, setEndPos]       = useState(null);
-  const [pickMode, setPickMode]   = useState(null);
-  const [routes, setRoutes]       = useState(null);
-  const [activeRoute, setActiveRoute] = useState(null);
+  const [roverState, setRoverState] = useState({
+    x: DEFAULT_START.x, y: 0, z: DEFAULT_START.z,
+    speed: 0, heading: 0, autoMode: false,
+  });
+  const [startPos, setStartPos] = useState(DEFAULT_START);
+  const [endPos, setEndPos]     = useState(DEFAULT_END);
+  const [routes, setRoutes]     = useState(null);
+  const [activeRoute, setActiveRoute] = useState('AUTO');
   const [sunAngleDeg, setSunAngleDeg] = useState(45);
-  const [heatmapType, setHeatmapType] = useState('Hazard Score');
   const [wireframe, setWireframe] = useState(false);
-  const [cameraMode] = useState('follow');
-  const [routeLog, setRouteLog]   = useState([]);
-  const [resetKey, setResetKey]   = useState(0);
+  const [cameraMode, setCameraMode] = useState('follow');
+  const [routeLog, setRouteLog] = useState([`[${ts()}] Ready. Pick start/end or use defaults.`]);
+  const [isRoving, setIsRoving] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
-  // Path ref: stores planned routes AND rover trail
-  const pathRef = useRef({ _roverTrail: [[-40, getTerrainHeight(-40, -40) + 0.45, -40]] });
-
-  // Learning model — persists across renders
+  const pathRef = useRef({ _roverTrail: [] });
   const learningModel = useMemo(() => new LearningModel(), []);
 
-  // Precomputed maps for path planning (lazy)
+  // Precomputed terrain maps (lazy — only built once)
   const mapsRef = useRef(null);
   const getMaps = useCallback(() => {
     if (!mapsRef.current) {
       const hm = buildHeightMap();
       const sm = buildSlopeMap(hm);
-      const cm = buildCraterMask(1.0);
+      const cm = buildCraterMask();
       mapsRef.current = { hm, sm, cm };
     }
     return mapsRef.current;
   }, []);
 
   const addLog = useCallback((msg) => {
-    setRouteLog(prev => [`[${getTimestamp()}] ${msg}`, ...prev].slice(0, 20));
+    setRouteLog(prev => [...prev, `[${ts()}] ${msg}`].slice(-30));
   }, []);
 
-  const handlePickStart = useCallback((pos) => {
-    setStartPos(pos);
-    setRoutes(null);
-    setActiveRoute(null);
-    addLog(`Start set: (${pos.x.toFixed(1)}, ${pos.z.toFixed(1)})`);
-    setPickMode(null);
-  }, [addLog]);
-
-  const handlePickEnd = useCallback((pos) => {
-    setEndPos(pos);
-    setRoutes(null);
-    setActiveRoute(null);
-    addLog(`End set: (${pos.x.toFixed(1)}, ${pos.z.toFixed(1)})`);
-    setPickMode(null);
-  }, [addLog]);
-
   const handlePlanPath = useCallback(() => {
-    const s = startPos || { x: -40, z: -40 };
-    const e = endPos   || { x:  40, z:  40 };
+    const s = startPos || DEFAULT_START;
+    const e = endPos   || DEFAULT_END;
     addLog('Planning 4 routes...');
+    setRoutes(null);
 
-    // Use timeout to not block render
     setTimeout(() => {
-      const { sm, cm } = getMaps();
-      const planned = planAllRoutes(s, e, sm, cm);
-      setRoutes(planned);
-      pathRef.current = { ...pathRef.current, ...planned };
-      addLog(`SAFE: ${planned.SAFE.length} pts`);
-      addLog(`ECO: ${planned.ECO.length} pts`);
-      addLog(`FAST: ${planned.FAST.length} pts`);
-      addLog(`AUTO: ${planned.AUTO.length} pts`);
-      addLog('Select a route and press START.');
+      try {
+        const { sm, cm } = getMaps();
+        const planned = planAllRoutes(s, e, sm, cm);
+        setRoutes(planned);
+        // Sync into pathRef
+        pathRef.current = {
+          ...pathRef.current,
+          SAFE: planned.SAFE,
+          ECO:  planned.ECO,
+          FAST: planned.FAST,
+          AUTO: planned.AUTO,
+        };
+        for (const [mode, pts] of Object.entries(planned)) {
+          addLog(`${mode}: ${pts.length} waypoints`);
+        }
+        addLog('Select a route and press START ROVER.');
+      } catch (err) {
+        addLog(`[ERR] ${err.message}`);
+      }
     }, 30);
   }, [startPos, endPos, getMaps, addLog]);
 
-  const handleSelectRoute = useCallback((mode) => {
-    setActiveRoute(mode);
-    if (routes?.[mode]) {
-      // Reset rover waypoint tracking
-      pathRef.current._waypointIdx = 0;
-    }
-    addLog(`Route selected: ${mode}`);
-  }, [routes, addLog]);
-
   const handleStartRover = useCallback(() => {
-    if (!activeRoute || !routes) return;
-    // Teleport rover to start of route
+    if (!activeRoute || !routes?.[activeRoute]) return;
     const route = routes[activeRoute];
-    if (route && route.length > 0) {
+    if (route.length > 0) {
       const first = route[0];
       pathRef.current._roverTrail = [[first[0], first[1], first[2]]];
-      setRoverState(s => ({ ...s, x: first[0], y: first[1], z: first[2] }));
+      pathRef.current._waypointIdx = 0;
+      setRoverState(s => ({ ...s, x: first[0], y: first[1], z: first[2], autoMode: true }));
       setResetKey(k => k + 1);
+      setIsRoving(true);
+      addLog(`Rover started on ${activeRoute} route (${route.length} pts).`);
     }
-    addLog(`Rover started on ${activeRoute} route.`);
   }, [activeRoute, routes, addLog]);
 
-  const handleClear = useCallback(() => {
-    setStartPos(null);
-    setEndPos(null);
-    setRoutes(null);
-    setActiveRoute(null);
-    setPickMode(null);
-    pathRef.current = { _roverTrail: pathRef.current._roverTrail || [] };
-    clearPathCache();
-    addLog('Path cleared.');
+  const handleStopRover = useCallback(() => {
+    pathRef.current._waypointIdx = undefined;
+    setRoverState(s => ({ ...s, autoMode: false }));
+    setIsRoving(false);
+    addLog('Rover stopped.');
   }, [addLog]);
 
-  const handleSwapPoints = useCallback(() => {
-    setStartPos(endPos);
-    setEndPos(startPos);
-    setRoutes(null);
-    setActiveRoute(null);
-    addLog('Start/End swapped.');
-  }, [startPos, endPos, addLog]);
-
-  // Initial default positions
+  // Update isRoving from rover state
   useEffect(() => {
-    setStartPos({ x: -35, z: -35 });
-    setEndPos({ x: 35, z: 35 });
-    addLog('Ready. Pick start/end or use defaults.');
-  }, []);
+    if (roverState.autoMode === false && isRoving) {
+      setIsRoving(false);
+    }
+  }, [roverState.autoMode]);
+
+  const { hm, sm, cm } = useMemo(() => {
+    const maps = getMaps();
+    return { hm: maps.hm, sm: maps.sm, cm: maps.cm };
+  }, [getMaps]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative', background: '#000008' }}>
-      {/* 3D Scene — fills viewport minus right panel */}
-      <div style={{ position: 'absolute', inset: 0, right: 170 }}>
+      {/* 3D Scene */}
+      <div style={{ position: 'absolute', inset: 0, right: 210 }}>
         <Suspense fallback={
-          <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
-            color:'#4ecdc4', fontSize:14, fontFamily:'monospace', letterSpacing:'0.15em' }}>
+          <div style={{ width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',
+            color:'#44ff88',fontSize:13,fontFamily:'monospace',letterSpacing:'0.18em' }}>
             LOADING LUNAR SURFACE...
           </div>
         }>
@@ -161,15 +142,15 @@ export default function App() {
         </Suspense>
       </div>
 
-      {/* Title bar */}
+      {/* HUD title */}
       <div style={{
-        position: 'absolute', top: 10, left: 12,
-        color: 'rgba(160,220,160,0.85)', fontFamily: 'monospace', fontSize: 11,
-        letterSpacing: '0.2em', zIndex: 15, pointerEvents: 'none',
-        textShadow: '0 0 8px rgba(60,200,60,0.5)',
+        position:'absolute',top:10,left:12,
+        color:'rgba(120,200,120,0.8)',fontFamily:'monospace',fontSize:11,
+        letterSpacing:'0.2em',zIndex:15,pointerEvents:'none',
+        textShadow:'0 0 8px rgba(40,180,40,0.4)',
       }}>
         MOON ROVER SIMULATOR
-        <div style={{ fontSize: 8, color: 'rgba(100,160,100,0.6)', marginTop: 2 }}>
+        <div style={{fontSize:8,color:'rgba(80,140,80,0.6)',marginTop:2}}>
           DRAG · ROTATE · SCROLL TO ZOOM
         </div>
       </div>
@@ -177,26 +158,23 @@ export default function App() {
       {/* Right panel */}
       <RightPanel
         roverState={roverState}
+        pathRef={pathRef}
         routes={routes}
         activeRoute={activeRoute}
-        onSelectRoute={handleSelectRoute}
-        startPos={startPos}
-        endPos={endPos}
-        onPickStart={handlePickStart}
-        onPickEnd={handlePickEnd}
+        setActiveRoute={setActiveRoute}
+        startPos={startPos}   setStartPos={setStartPos}
+        endPos={endPos}       setEndPos={setEndPos}
         onPlanPath={handlePlanPath}
+        sunAngleDeg={sunAngleDeg}  setSunAngleDeg={setSunAngleDeg}
+        cameraMode={cameraMode}    setCameraMode={setCameraMode}
+        wireframe={wireframe}      setWireframe={setWireframe}
         onStartRover={handleStartRover}
-        onClear={handleClear}
-        onSwapPoints={handleSwapPoints}
-        pickMode={pickMode}
-        setPickMode={setPickMode}
-        sunAngleDeg={sunAngleDeg}
-        onSunAngleChange={setSunAngleDeg}
-        heatmapType={heatmapType}
-        onHeatmapChange={setHeatmapType}
+        onStopRover={handleStopRover}
+        isRoving={isRoving}
+        slopeMap={sm}
+        craterMask={cm}
+        hMap={hm}
         learningModel={learningModel}
-        wireframe={wireframe}
-        onToggleWireframe={() => setWireframe(w => !w)}
         routeLog={routeLog}
       />
     </div>

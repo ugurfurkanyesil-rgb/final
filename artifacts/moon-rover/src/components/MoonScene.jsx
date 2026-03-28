@@ -1,111 +1,127 @@
 /**
- * MoonScene - Main 3D scene component
- * 100×100m Moon terrain, detailed rover, adjustable sun, path lines.
+ * MoonScene - React Three Fiber 3D scene
+ * 100×100m Moon terrain, detailed rover, space debris, adjustable sun.
+ * Full touchpad / mouse / scroll controls.
  */
 
 import { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { generateTerrain, getTerrainHeight, generateRockPositions, TERRAIN_SIZE } from '../three/terrainGenerator';
+import {
+  generateTerrain, getTerrainHeight, generateRockPositions,
+  generateDebrisPositions, TERRAIN_SIZE
+} from '../three/terrainGenerator';
 import { useRoverController } from '../three/roverController';
+import { ROUTE_COLORS } from '../utils/constants';
 
-// Route colors
-export const ROUTE_COLORS = {
-  SAFE: '#22cc44',
-  ECO:  '#44dddd',
-  FAST: '#4488ff',
-  AUTO: '#ffcc22',
-};
-
-// === Terrain ===
+// ---- Terrain ----
 let _geo = null;
 function Terrain({ wireframe }) {
   if (!_geo) _geo = generateTerrain();
   return (
     <mesh geometry={_geo} receiveShadow>
       <meshStandardMaterial
-        color={wireframe ? '#44aa44' : '#b0b0a8'}
+        vertexColors={!wireframe}
+        color={wireframe ? '#44aa44' : '#ffffff'}
         wireframe={wireframe}
-        roughness={0.96}
-        metalness={0.01}
+        roughness={0.97}
+        metalness={0.00}
       />
     </mesh>
   );
 }
 
-// === Detailed Rover Model ===
+// ---- Detailed Rover ----
 function RoverBody({ wireframe }) {
-  const mat = (color) => (
-    <meshStandardMaterial color={color} roughness={0.7} metalness={0.35} wireframe={wireframe} />
-  );
+  const wMat = <meshStandardMaterial color="#1a1a10" roughness={0.95} metalness={0.05} wireframe={wireframe} />;
+  const bodyMat = <meshStandardMaterial color="#8a8a7a" roughness={0.72} metalness={0.32} wireframe={wireframe} />;
+  const panelMat = <meshStandardMaterial color="#1c2e88" roughness={0.22} metalness={0.75} wireframe={wireframe} />;
+  const silverMat = <meshStandardMaterial color="#b4b4a0" roughness={0.55} metalness={0.55} wireframe={wireframe} />;
+  const rtgMat = <meshStandardMaterial color="#6a6a58" roughness={0.80} metalness={0.40} wireframe={wireframe} />;
+
   return (
     <group>
-      {/* Main chassis */}
-      <mesh position={[0, 0.22, 0]} castShadow>
-        <boxGeometry args={[0.9, 0.22, 1.3]} />
-        {mat('#8a8a7a')}
+      {/* Chassis */}
+      <mesh position={[0, 0.21, 0]} castShadow>{bodyMat}
+        <boxGeometry args={[0.88, 0.20, 1.28]} />
       </mesh>
-      {/* Upper electronics box */}
-      <mesh position={[0, 0.45, 0.05]} castShadow>
-        <boxGeometry args={[0.62, 0.18, 0.85]} />
-        {mat('#9e9e8e')}
+      {/* Electronics bay */}
+      <mesh position={[0, 0.43, 0.06]} castShadow>{bodyMat}
+        <boxGeometry args={[0.60, 0.17, 0.82]} />
       </mesh>
-      {/* RTG / power unit rear */}
-      <mesh position={[0, 0.3, -0.6]} castShadow>
-        <cylinderGeometry args={[0.12, 0.12, 0.5, 8]} />
-        {mat('#777766')}
+      {/* Top equipment box */}
+      <mesh position={[0, 0.56, -0.05]} castShadow>
+        <meshStandardMaterial color="#9e9e8c" roughness={0.65} metalness={0.35} wireframe={wireframe} />
+        <boxGeometry args={[0.40, 0.12, 0.55]} />
       </mesh>
-      {/* Solar panel left */}
-      <mesh position={[-0.72, 0.52, 0.05]} castShadow>
-        <boxGeometry args={[0.5, 0.025, 0.8]} />
-        <meshStandardMaterial color="#2244aa" roughness={0.25} metalness={0.7} wireframe={wireframe} />
+      {/* RTG rear */}
+      <mesh position={[0, 0.28, -0.65]} rotation={[Math.PI/2,0,0]} castShadow>{rtgMat}
+        <cylinderGeometry args={[0.11, 0.11, 0.46, 8]} />
       </mesh>
-      {/* Solar panel right */}
-      <mesh position={[0.72, 0.52, 0.05]} castShadow>
-        <boxGeometry args={[0.5, 0.025, 0.8]} />
-        <meshStandardMaterial color="#2244aa" roughness={0.25} metalness={0.7} wireframe={wireframe} />
+      {/* RTG fins */}
+      {[0,1,2,3].map(i => (
+        <mesh key={i} position={[0, 0.28, -0.65]} rotation={[Math.PI/2, i*Math.PI/4, 0]} castShadow>
+          <meshStandardMaterial color="#555544" roughness={0.9} metalness={0.2} />
+          <boxGeometry args={[0.22, 0.025, 0.44]} />
+        </mesh>
+      ))}
+      {/* Solar panels */}
+      <mesh position={[-0.70, 0.51, 0.06]} castShadow>{panelMat}
+        <boxGeometry args={[0.48, 0.022, 0.76]} />
       </mesh>
+      <mesh position={[0.70, 0.51, 0.06]} castShadow>{panelMat}
+        <boxGeometry args={[0.48, 0.022, 0.76]} />
+      </mesh>
+      {/* Panel grid lines */}
+      {[-1,1].map(side => [0,1,2].map(j => (
+        <mesh key={`${side}-${j}`} position={[side*0.70, 0.525, -0.18 + j*0.18]}>
+          <boxGeometry args={[0.48, 0.006, 0.006]} />
+          <meshStandardMaterial color="#0a1555" />
+        </mesh>
+      )))}
       {/* Camera mast */}
-      <mesh position={[0, 0.73, 0.35]} castShadow>
-        <cylinderGeometry args={[0.025, 0.025, 0.42, 6]} />
-        {mat('#b0b09a')}
+      <mesh position={[0, 0.79, 0.35]} castShadow>{silverMat}
+        <cylinderGeometry args={[0.022, 0.026, 0.42, 7]} />
       </mesh>
       {/* Camera head */}
-      <mesh position={[0, 0.96, 0.35]} castShadow>
-        <boxGeometry args={[0.18, 0.13, 0.12]} />
-        {mat('#222222')}
+      <mesh position={[0, 1.01, 0.35]} castShadow>
+        <meshStandardMaterial color="#1a1a1a" roughness={0.5} metalness={0.6} wireframe={wireframe} />
+        <boxGeometry args={[0.17, 0.12, 0.10]} />
+      </mesh>
+      {/* Camera lens */}
+      <mesh position={[0, 1.01, 0.41]}>
+        <cylinderGeometry args={[0.03, 0.03, 0.02, 8]} />
+        <meshStandardMaterial color="#050508" roughness={0.1} metalness={0.8} />
       </mesh>
       {/* Antenna */}
-      <mesh position={[0.28, 0.72, -0.15]} castShadow>
-        <cylinderGeometry args={[0.018, 0.018, 0.38, 5]} />
-        {mat('#c8c8b8')}
+      <mesh position={[0.26, 0.70, -0.12]} castShadow>{silverMat}
+        <cylinderGeometry args={[0.016, 0.016, 0.35, 5]} />
       </mesh>
-      <mesh position={[0.28, 0.92, -0.15]}>
-        <sphereGeometry args={[0.04, 6, 6]} />
-        <meshStandardMaterial color="#ff4444" emissive="#ff2222" emissiveIntensity={0.8} />
+      <mesh position={[0.26, 0.89, -0.12]}>
+        <sphereGeometry args={[0.038, 7, 7]} />
+        <meshStandardMaterial color="#ff3333" emissive="#ff1111" emissiveIntensity={0.8} />
       </mesh>
-      {/* 6 wheels — rocker-bogie style */}
-      {[-0.52, 0.52].map((xPos, ci) =>
-        [-0.55, 0.0, 0.55].map((zOff, ri) => (
-          <group key={`${ci}-${ri}`} position={[xPos, 0.04, zOff]}>
-            {/* Suspension strut */}
-            <mesh position={[xPos < 0 ? 0.1 : -0.1, 0.15, 0]}>
-              <boxGeometry args={[0.18, 0.04, 0.04]} />
-              {mat('#7a7a6a')}
+      {/* 6 wheels */}
+      {[-0.51, 0.51].map((xPos, ci) =>
+        [-0.54, 0.0, 0.54].map((zOff, ri) => (
+          <group key={`w${ci}${ri}`} position={[xPos, 0.04, zOff]}>
+            <mesh rotation={[0,0,Math.PI/2]} castShadow>
+              {wMat}
+              <cylinderGeometry args={[0.175, 0.175, 0.095, 12]} />
             </mesh>
-            {/* Wheel */}
-            <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-              <cylinderGeometry args={[0.18, 0.18, 0.1, 12]} />
-              {mat('#2a2a1e')}
-            </mesh>
-            {/* Wheel tread lines */}
-            {[0,1,2,3].map(j => (
-              <mesh key={j} rotation={[j * Math.PI/4, 0, Math.PI/2]}>
-                <torusGeometry args={[0.18, 0.012, 4, 12, Math.PI * 0.7]} />
-                {mat('#1a1a0f')}
+            {/* Tread chevrons */}
+            {Array.from({length:6},(_,k) => (
+              <mesh key={k} rotation={[k*Math.PI/3,0,Math.PI/2]}>
+                <torusGeometry args={[0.175, 0.011, 4, 10, Math.PI*0.55]} />
+                <meshStandardMaterial color="#0e0e08" />
               </mesh>
             ))}
+            {/* Suspension arm */}
+            <mesh position={[xPos<0?0.15:-0.15, 0.14, 0]}>
+              <boxGeometry args={[0.26, 0.035, 0.035]} />
+              <meshStandardMaterial color="#6a6a5a" roughness={0.8} />
+            </mesh>
           </group>
         ))
       )}
@@ -116,38 +132,134 @@ function RoverBody({ wireframe }) {
 function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningModel, wireframe }) {
   const { update } = useRoverController(roverRef, setRoverState, pathRef, activeRoute, learningModel);
   useFrame(({ clock }) => update(clock.getElapsedTime() * 1000));
-  return (
-    <group ref={roverRef}>
-      <RoverBody wireframe={wireframe} />
-    </group>
-  );
+  return <group ref={roverRef}><RoverBody wireframe={wireframe} /></group>;
 }
 
-// === Rocks ===
-const ROCKS = generateRockPositions(50);
+// ---- Rocks ----
+const ROCKS = generateRockPositions(80);
 function Rocks() {
   return (
     <>
       {ROCKS.map((r, i) => (
-        <mesh key={i} position={[r.x, r.y + r.scale * 0.3, r.z]}
-          rotation={[0.2, r.rotY, 0.1]}
-          scale={[r.scale, r.scale * 0.65, r.scale * 0.85]}
-          castShadow receiveShadow>
-          <dodecahedronGeometry args={[0.5, 0]} />
-          <meshStandardMaterial color="#6a6a5a" roughness={0.92} metalness={0.04} />
+        <mesh key={i}
+          position={[r.x, r.y + r.scale*0.28, r.z]}
+          rotation={[r.rotX||0, r.rotY, 0.1]}
+          scale={[r.scale, r.scale*0.65, r.scale*0.82]}
+          castShadow receiveShadow
+        >
+          <dodecahedronGeometry args={[0.45, 0]} />
+          <meshStandardMaterial color={`hsl(40,6%,${38 + Math.random()*12}%)`} roughness={0.94} metalness={0.03} />
         </mesh>
       ))}
     </>
   );
 }
 
-// === Path Lines ===
+// ---- Space Debris ----
+const DEBRIS = generateDebrisPositions();
+
+function DebrisPanel({ pos, scale, rot }) {
+  return (
+    <group position={[pos.x, pos.y + scale*0.06, pos.z]} rotation={[0.25, rot, 0.15]}>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[scale*1.4, scale*0.04, scale*0.8]} />
+        <meshStandardMaterial color="#3a4466" roughness={0.45} metalness={0.7} />
+      </mesh>
+      {/* Solar cell grid */}
+      {Array.from({length:4},(_,i) => (
+        <mesh key={i} position={[(-0.6+i*0.4)*scale, scale*0.03, 0]}>
+          <boxGeometry args={[scale*0.32, scale*0.005, scale*0.72]} />
+          <meshStandardMaterial color="#1a2255" roughness={0.3} metalness={0.8} />
+        </mesh>
+      ))}
+      {/* Crumpled corner */}
+      <mesh position={[scale*0.65, scale*0.06, scale*0.3]} rotation={[0.4, 0.3, 0.6]} castShadow>
+        <boxGeometry args={[scale*0.3, scale*0.04, scale*0.25]} />
+        <meshStandardMaterial color="#3a4466" roughness={0.5} metalness={0.65} />
+      </mesh>
+    </group>
+  );
+}
+
+function DebrisTank({ pos, scale, rot }) {
+  return (
+    <group position={[pos.x, pos.y + scale*0.22, pos.z]} rotation={[0.3, rot, 0.2]}>
+      <mesh castShadow receiveShadow>
+        <cylinderGeometry args={[scale*0.22, scale*0.22, scale*0.9, 10]} />
+        <meshStandardMaterial color="#8a8070" roughness={0.6} metalness={0.55} />
+      </mesh>
+      <mesh position={[0, scale*0.5, 0]} castShadow>
+        <sphereGeometry args={[scale*0.22, 8, 8]} />
+        <meshStandardMaterial color="#7a7060" roughness={0.65} metalness={0.5} />
+      </mesh>
+      {/* Scorch marks */}
+      <mesh position={[scale*0.15, 0, 0]} rotation={[0.1,0,0.5]}>
+        <boxGeometry args={[scale*0.08, scale*0.7, scale*0.05]} />
+        <meshStandardMaterial color="#2a2218" roughness={0.98} metalness={0.1} transparent opacity={0.75} />
+      </mesh>
+    </group>
+  );
+}
+
+function DebrisHull({ pos, scale, rot }) {
+  return (
+    <group position={[pos.x, pos.y + scale*0.08, pos.z]} rotation={[0.15, rot, 0.1]}>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[scale*0.9, scale*0.18, scale*0.55]} />
+        <meshStandardMaterial color="#5a5848" roughness={0.75} metalness={0.45} />
+      </mesh>
+      {/* Torn edge */}
+      <mesh position={[scale*0.42, scale*0.05, 0]} rotation={[0,0,0.4]} castShadow>
+        <boxGeometry args={[scale*0.15, scale*0.22, scale*0.5]} />
+        <meshStandardMaterial color="#4a4838" roughness={0.8} metalness={0.4} />
+      </mesh>
+      {/* Wiring bundle */}
+      <mesh position={[-scale*0.3, scale*0.12, 0]} rotation={[0.2,0,0.3]}>
+        <cylinderGeometry args={[scale*0.04, scale*0.04, scale*0.6, 5]} />
+        <meshStandardMaterial color="#1a3a1a" roughness={0.9} metalness={0.3} />
+      </mesh>
+    </group>
+  );
+}
+
+function DebrisStrut({ pos, scale, rot }) {
+  return (
+    <group position={[pos.x, pos.y + scale*0.04, pos.z]} rotation={[0.2, rot, 0.05]}>
+      <mesh castShadow receiveShadow>
+        <cylinderGeometry args={[scale*0.06, scale*0.08, scale*2.2, 7]} />
+        <meshStandardMaterial color="#9a9080" roughness={0.7} metalness={0.5} />
+      </mesh>
+      {/* Broken joint */}
+      <mesh position={[0, scale*1.05, 0]} rotation={[0.5,0.3,0.4]}>
+        <boxGeometry args={[scale*0.2, scale*0.14, scale*0.18]} />
+        <meshStandardMaterial color="#7a7060" roughness={0.75} metalness={0.45} />
+      </mesh>
+    </group>
+  );
+}
+
+function SpaceDebris() {
+  return (
+    <>
+      {DEBRIS.map((d, i) => {
+        const p = d;
+        if (d.type === 'panel')  return <DebrisPanel  key={i} pos={p} scale={d.scale} rot={d.rot} />;
+        if (d.type === 'tank')   return <DebrisTank   key={i} pos={p} scale={d.scale} rot={d.rot} />;
+        if (d.type === 'hull')   return <DebrisHull   key={i} pos={p} scale={d.scale} rot={d.rot} />;
+        if (d.type === 'strut')  return <DebrisStrut  key={i} pos={p} scale={d.scale} rot={d.rot} />;
+        return null;
+      })}
+    </>
+  );
+}
+
+// ---- Route Lines ----
 function RouteLine({ points, color, active }) {
   if (!points || points.length < 2) return null;
   const positions = new Float32Array(points.length * 3);
   for (let i = 0; i < points.length; i++) {
     positions[i*3]   = points[i][0];
-    positions[i*3+1] = points[i][1] + (active ? 0.12 : 0.06);
+    positions[i*3+1] = points[i][1] + (active ? 0.14 : 0.08);
     positions[i*3+2] = points[i][2];
   }
   return (
@@ -155,7 +267,7 @@ function RouteLine({ points, color, active }) {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" array={positions} count={points.length} itemSize={3} />
       </bufferGeometry>
-      <lineBasicMaterial color={color} opacity={active ? 1.0 : 0.55} transparent />
+      <lineBasicMaterial color={color} opacity={active ? 1.0 : 0.5} transparent />
     </line>
   );
 }
@@ -165,7 +277,7 @@ function TrailLine({ points }) {
   const positions = new Float32Array(points.length * 3);
   for (let i = 0; i < points.length; i++) {
     positions[i*3]   = points[i][0];
-    positions[i*3+1] = points[i][1] + 0.05;
+    positions[i*3+1] = points[i][1] + 0.06;
     positions[i*3+2] = points[i][2];
   }
   return (
@@ -173,44 +285,52 @@ function TrailLine({ points }) {
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" array={positions} count={points.length} itemSize={3} />
       </bufferGeometry>
-      <lineBasicMaterial color="#ffffff" opacity={0.4} transparent />
+      <lineBasicMaterial color="#ffffff" opacity={0.35} transparent />
     </line>
   );
 }
 
-// === Waypoint markers ===
+// ---- Waypoint markers ----
 function WaypointMarker({ pos, color }) {
   if (!pos) return null;
-  const y = getTerrainHeight(pos.x, pos.z) + 0.3;
+  const y = getTerrainHeight(pos.x, pos.z);
   return (
     <group position={[pos.x, y, pos.z]}>
       <mesh>
-        <cylinderGeometry args={[0.3, 0, 0.9, 6]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} transparent opacity={0.85} />
+        <cylinderGeometry args={[0, 0.35, 1.1, 6]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} transparent opacity={0.9} />
+      </mesh>
+      <mesh position={[0, -0.1, 0]}>
+        <cylinderGeometry args={[0.35, 0.35, 0.08, 12]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} transparent opacity={0.5} />
       </mesh>
     </group>
   );
 }
 
-// === Camera ===
-function CameraController({ roverRef, cameraMode, orbitRef, sunAngle }) {
+// ---- Camera ----
+function CameraController({ roverRef, cameraMode, orbitRef }) {
   useFrame(({ camera }) => {
     if (cameraMode === 'follow' && roverRef.current) {
       const rover = roverRef.current;
-      // Bird's eye follow — elevated, tilted view
       const angle = rover.rotation.y;
-      const camX = rover.position.x - Math.sin(angle) * 12;
-      const camZ = rover.position.z - Math.cos(angle) * 12;
-      camera.position.lerp(new THREE.Vector3(camX, 14, camZ), 0.06);
+      camera.position.lerp(
+        new THREE.Vector3(
+          rover.position.x - Math.sin(angle) * 14,
+          rover.position.y + 13,
+          rover.position.z - Math.cos(angle) * 14
+        ),
+        0.055
+      );
       const target = rover.position.clone();
       camera.lookAt(target);
-      if (orbitRef.current) orbitRef.current.target.lerp(target, 0.08);
+      if (orbitRef.current) orbitRef.current.target.lerp(target, 0.07);
     }
   });
   return null;
 }
 
-// === Main Scene ===
+// ---- Main export ----
 export default function MoonScene({
   roverState, setRoverState, pathRef,
   routes, activeRoute,
@@ -221,57 +341,54 @@ export default function MoonScene({
   const roverRef = useRef();
   const orbitRef = useRef();
 
-  // Sun direction from angle
   const sunRad = (sunAngleDeg * Math.PI) / 180;
-  const sunX = Math.sin(sunRad) * 80;
-  const sunZ = -Math.cos(sunRad) * 80;
-  const sunY = 70;
+  const sunX = Math.sin(sunRad) * 75;
+  const sunZ = -Math.cos(sunRad) * 75;
+  const sunY = 68;
 
   const trail = pathRef.current._roverTrail || [];
 
   return (
     <Canvas
       shadows
-      camera={{ position: [0, 28, -22], fov: 48, near: 0.1, far: 800 }}
+      camera={{ position: [0, 30, -24], fov: 46, near: 0.1, far: 800 }}
       style={{ background: '#000008' }}
       gl={{ antialias: true }}
     >
-      <Stars radius={300} depth={60} count={5000} factor={4} saturation={0} fade />
+      <Stars radius={280} depth={55} count={4500} factor={3.5} saturation={0} fade />
 
-      {/* Sun directional light */}
+      {/* Sun */}
       <directionalLight
         position={[sunX, sunY, sunZ]}
-        intensity={2.0}
-        color="#fffaf0"
+        intensity={1.9}
+        color="#fffaf2"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={250}
-        shadow-camera-left={-70}
-        shadow-camera-right={70}
-        shadow-camera-top={70}
-        shadow-camera-bottom={-70}
+        shadow-camera-far={220}
+        shadow-camera-left={-65}
+        shadow-camera-right={65}
+        shadow-camera-top={65}
+        shadow-camera-bottom={-65}
       />
       {/* Earthshine fill */}
-      <ambientLight intensity={0.07} color="#c0d0ff" />
-      <directionalLight position={[-40, 15, -50]} intensity={0.12} color="#b8caff" />
+      <ambientLight intensity={0.065} color="#b8caff" />
+      <directionalLight position={[-35, 12, -55]} intensity={0.10} color="#b0c0ff" />
 
       <Terrain wireframe={wireframe} />
       <Rocks />
+      <SpaceDebris />
 
-      {/* Route lines */}
+      {/* Routes */}
       {routes && Object.entries(routes).map(([mode, pts]) => (
         <RouteLine key={mode} points={pts} color={ROUTE_COLORS[mode]} active={mode === activeRoute} />
       ))}
 
-      {/* Rover trail */}
       <TrailLine points={trail} />
 
-      {/* Waypoint markers */}
-      {startPos && <WaypointMarker pos={startPos} color="#22ff44" />}
+      {startPos && <WaypointMarker pos={startPos} color="#22ff55" />}
       {endPos   && <WaypointMarker pos={endPos}   color="#ff4422" />}
 
-      {/* Rover */}
       <RoverPhysics
         roverRef={roverRef}
         setRoverState={setRoverState}
@@ -281,12 +398,22 @@ export default function MoonScene({
         wireframe={wireframe}
       />
 
-      <CameraController roverRef={roverRef} cameraMode={cameraMode} orbitRef={orbitRef} sunAngle={sunAngleDeg} />
+      <CameraController roverRef={roverRef} cameraMode={cameraMode} orbitRef={orbitRef} />
+
+      {/* Full touchpad + mouse + touch controls */}
       <OrbitControls
         ref={orbitRef}
-        enabled={cameraMode === 'free'}
-        maxPolarAngle={Math.PI / 2.05}
-        enablePan enableZoom enableRotate
+        enabled={true}
+        enablePan={true}
+        enableZoom={true}
+        enableRotate={true}
+        maxPolarAngle={Math.PI / 2.02}
+        minDistance={5}
+        maxDistance={120}
+        zoomSpeed={1.2}
+        panSpeed={0.8}
+        rotateSpeed={0.6}
+        touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
       />
     </Canvas>
   );
