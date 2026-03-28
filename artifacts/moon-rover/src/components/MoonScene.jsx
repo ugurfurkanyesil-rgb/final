@@ -148,6 +148,85 @@ function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningM
   );
 }
 
+// ---- Wheel Tracks ----
+const MAX_TRACK_PAIRS = 600;        // ring buffer size (600 pairs = 1200 instances)
+const TRACK_STEP      = 0.28;       // world-units between track placements
+const TRACK_W         = 0.155;      // width of each tread mark (wheel width × 1.67 scale)
+const TRACK_L         = 0.36;       // length of each segment (slightly overlapping)
+const TRACK_H         = 0.018;      // height (nearly flat on terrain)
+const WHEEL_OFFSET    = 0.852;      // lateral distance rover center → wheel centre (0.51 × 1.67)
+
+function WheelTracks({ roverRef }) {
+  const meshRef  = useRef();
+  const headRef  = useRef(0);       // next slot in ring buffer
+  const totalRef = useRef(0);       // number of filled slots
+  const lastPos  = useRef(null);
+  const dummy    = useMemo(() => new THREE.Object3D(), []);
+
+  // Hide all instances on mount
+  useEffect(() => {
+    if (!meshRef.current) return;
+    dummy.scale.set(0, 0, 0);
+    dummy.updateMatrix();
+    for (let i = 0; i < MAX_TRACK_PAIRS * 2; i++) {
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    dummy.scale.set(1, 1, 1);
+  }, [dummy]);
+
+  useFrame(() => {
+    if (!roverRef.current || !meshRef.current) return;
+    const rpos = roverRef.current.position;
+
+    if (!lastPos.current) { lastPos.current = rpos.clone(); return; }
+
+    const dx = rpos.x - lastPos.current.x;
+    const dz = rpos.z - lastPos.current.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < TRACK_STEP) return;
+
+    // Forward direction from movement; right = perpendicular
+    const fx = dx / dist, fz = dz / dist;
+    const rx = fz, rz = -fx;             // 90° clockwise = right vector
+    const headingY = Math.atan2(fx, fz); // for aligning the box along forward
+
+    for (let side = 0; side < 2; side++) {
+      const sign = side === 0 ? -1 : 1;  // -1 = left, +1 = right
+      const wx = rpos.x + sign * rx * WHEEL_OFFSET;
+      const wz = rpos.z + sign * rz * WHEEL_OFFSET;
+      const wy = getTerrainHeight(wx, wz) + TRACK_H * 0.5 + 0.003;
+
+      dummy.position.set(wx, wy, wz);
+      dummy.rotation.set(0, headingY, 0);
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(headRef.current * 2 + side, dummy.matrix);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+
+    lastPos.current.copy(rpos);
+    headRef.current = (headRef.current + 1) % MAX_TRACK_PAIRS;
+    if (totalRef.current < MAX_TRACK_PAIRS) {
+      totalRef.current++;
+      meshRef.current.count = totalRef.current * 2;
+    }
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[null, null, MAX_TRACK_PAIRS * 2]} count={0} receiveShadow>
+      <boxGeometry args={[TRACK_W, TRACK_H, TRACK_L]} />
+      <meshStandardMaterial
+        color="#18140c"
+        roughness={0.99}
+        metalness={0.0}
+        transparent
+        opacity={0.52}
+        depthWrite={false}
+      />
+    </instancedMesh>
+  );
+}
+
 // ---- Rocks ----
 const ROCKS = generateRockPositions(80);
 function Rocks() {
@@ -417,6 +496,7 @@ export default function MoonScene({
         wireframe={wireframe}
         initPos={roverState}
       />
+      <WheelTracks roverRef={roverRef} />
 
       <CameraController roverRef={roverRef} cameraMode={cameraMode} orbitRef={orbitRef} />
 
