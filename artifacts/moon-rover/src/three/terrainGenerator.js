@@ -124,25 +124,34 @@ export function createLunarRegolithTexture(size = 512) {
   const img  = ctx.createImageData(size, size);
   const d    = img.data;
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4;
+  // Seamless frequencies: k × 2π / size → at x=size wraps back to x=0 exactly
+  const TP = Math.PI * 2;
+  const f1 = TP *   7 / size;   // coarse grain
+  const f2 = TP *  19 / size;   // medium grain
+  const f3 = TP *  43 / size;   // fine grain
+  const f4 = TP *  89 / size;   // very fine
+  const f5 = TP * 181 / size;   // micro
+  const f6 = TP * 359 / size;   // ultra fine
 
-      // 6 octaves of sin-based value noise
-      const n0 = (Math.sin(x * 0.09 + 1.1)  * Math.cos(y * 0.08 + 2.3))  * 0.42 + 0.50;
-      const n1 = (Math.sin(x * 0.23 + 3.7)  * Math.cos(y * 0.26 + 0.9))  * 0.26 + 0.50;
-      const n2 = (Math.sin(x * 0.55 + 5.2)  * Math.cos(y * 0.51 + 4.4))  * 0.16 + 0.50;
-      const n3 = (Math.sin(x * 1.10 + 2.8)  * Math.cos(y * 1.05 + 1.6))  * 0.09 + 0.50;
-      const n4 = (Math.sin(x * 2.20 + 0.5)  * Math.cos(y * 2.35 + 3.2))  * 0.05 + 0.50;
-      const n5 = (Math.sin(x * 4.60 + 4.1)  * Math.cos(y * 4.15 + 5.8))  * 0.02 + 0.50;
-      // diagonal swirl for regolith streaks
-      const ns = (Math.sin((x + y) * 0.14 + 1.9) * Math.cos((x - y) * 0.11 + 0.7)) * 0.12;
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const i = (py * size + px) * 4;
 
-      const combined = n0 * 0.35 + n1 * 0.24 + n2 * 0.18 + n3 * 0.12 + n4 * 0.07 + n5 * 0.04 + ns * 0.10;
-      // Range 0–1 → pure neutral grey 118–192 — bright lunar highland
-      const v = Math.round(118 + combined * 74);
+      // All terms are seamlessly tileable (integer-k frequencies)
+      const n0 = Math.sin(px * f1 + 1.1) * Math.cos(py * f1 + 2.3) * 0.40 + 0.50;
+      const n1 = Math.sin(px * f2 + 3.7) * Math.cos(py * f2 + 0.9) * 0.25 + 0.50;
+      const n2 = Math.sin(px * f3 + 5.2) * Math.cos(py * f3 + 4.4) * 0.16 + 0.50;
+      const n3 = Math.sin(px * f4 + 2.8) * Math.cos(py * f4 + 1.6) * 0.10 + 0.50;
+      const n4 = Math.sin(px * f5 + 0.5) * Math.cos(py * f5 + 3.2) * 0.05 + 0.50;
+      const n5 = Math.sin(px * f6 + 4.1) * Math.cos(py * f6 + 5.8) * 0.03 + 0.50;
+      // Cross-axis blend for organic feel (still seamless: uses same integer freq)
+      const nc = Math.sin(px * f2 + py * f1 * 0.5 + 2.0) * 0.08 + 0.50;
+
+      const combined = n0*0.32 + n1*0.23 + n2*0.17 + n3*0.13 + n4*0.08 + n5*0.05 + nc*0.10 - 0.50*0.98;
+      // 0–1 → bright neutral grey 118–192
+      const v = Math.min(255, Math.max(0, Math.round(118 + combined * 74)));
       d[i]   = v;
-      d[i+1] = v;   // neutral grey: R = G = B
+      d[i+1] = v;
       d[i+2] = v;
       d[i+3] = 255;
     }
@@ -151,8 +160,8 @@ export function createLunarRegolithTexture(size = 512) {
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(16, 16);
-  tex.anisotropy = 8;
+  tex.repeat.set(8, 8);   // was 16 — fewer seams visible
+  tex.anisotropy = 16;
   return tex;
 }
 
@@ -167,27 +176,31 @@ export function createLunarNormalMap(size = 256) {
   const img = ctx.createImageData(size, size);
   const d   = img.data;
 
-  // Sample height at each pixel, finite-difference for normal
+  // Seamless integer-k frequencies for size=256
+  const TP = Math.PI * 2;
+  const g1 = TP *  6 / size;  // ≈ 0.147 — coarse bumps
+  const g2 = TP * 13 / size;  // ≈ 0.319 — medium bumps
+  const g3 = TP * 29 / size;  // ≈ 0.712 — fine bumps
+
+  // Seamless height function for normal generation
   const H = (x, y) =>
-    Math.sin(x * 0.48 + 1.1) * Math.cos(y * 0.45 + 2.2) * 0.60 +
-    Math.sin(x * 1.20 + 3.5) * Math.cos(y * 1.15 + 0.7) * 0.28 +
-    Math.sin(x * 2.60 + 0.8) * Math.cos(y * 2.50 + 4.3) * 0.12;
+    Math.sin(x * g1 + 1.1) * Math.cos(y * g1 + 2.2) * 0.55 +
+    Math.sin(x * g2 + 3.5) * Math.cos(y * g2 + 0.7) * 0.28 +
+    Math.sin(x * g3 + 0.8) * Math.cos(y * g3 + 4.3) * 0.12;
 
   const eps = 1.0;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i  = (y * size + x) * 4;
-      const hL = H(x - eps, y), hR = H(x + eps, y);
-      const hD = H(x, y - eps), hU = H(x, y + eps);
-      // Normal in tangent space: normalize([-dX, -dZ, strength])
-      const strength = 18.0;
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const i  = (py * size + px) * 4;
+      const hL = H(px - eps, py), hR = H(px + eps, py);
+      const hD = H(px, py - eps), hU = H(px, py + eps);
+      const strength = 14.0;
       const nx = (hL - hR);
       const nz = (hD - hU);
       const len = Math.sqrt(nx * nx + nz * nz + 1 / (strength * strength));
-      // Pack to 0–255 (128 = 0, tangent-space normal map encoding)
-      d[i]   = Math.round(128 + (nx / len) * 127);  // R = X
-      d[i+1] = Math.round(128 + (nz / len) * 127);  // G = Y
-      d[i+2] = 255;                                   // B = Z (up)
+      d[i]   = Math.round(128 + (nx / len) * 127);
+      d[i+1] = Math.round(128 + (nz / len) * 127);
+      d[i+2] = 255;
       d[i+3] = 255;
     }
   }
@@ -195,8 +208,8 @@ export function createLunarNormalMap(size = 256) {
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(32, 32);
-  tex.anisotropy = 8;
+  tex.repeat.set(16, 16);  // was 32 — fewer visible seams
+  tex.anisotropy = 16;
   return tex;
 }
 
