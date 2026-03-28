@@ -1,201 +1,142 @@
 /**
- * Terrain Generator
- * Procedurally generates a Moon-like terrain using simplex-noise-style
- * displacement via a custom height function. Creates craters, ridges,
- * and a dusty gray surface feel.
+ * Terrain Generator - 100x100m Moon terrain
+ * Smooth base surface with realistic crater depressions.
+ * No rocky noise - pure crater geometry only.
  */
 
 import * as THREE from 'three';
 
-// Simple pseudo-random noise using sine waves (no external deps)
-function hash(n) {
-  return Math.sin(n * 127.1 + 311.7) * 43758.5453123 % 1;
-}
+export const TERRAIN_SIZE = 100;
+export const GRID_RES = 200; // cells per side = 0.5m resolution
 
-function smoothNoise(x, y) {
-  const ix = Math.floor(x);
-  const iy = Math.floor(y);
-  const fx = x - ix;
-  const fy = y - iy;
-  // Smooth step
-  const ux = fx * fx * (3 - 2 * fx);
-  const uy = fy * fy * (3 - 2 * fy);
+// Canonical crater list for 100x100m terrain
+export const CRATERS = [
+  { x:  15, z: -10, radius: 9,  depth: 3.2, rimH: 1.1 },
+  { x: -20, z:  18, radius: 6,  depth: 2.1, rimH: 0.7 },
+  { x:  35, z:  32, radius: 14, depth: 4.8, rimH: 1.6 },
+  { x: -38, z: -28, radius: 11, depth: 3.8, rimH: 1.3 },
+  { x:   5, z:  38, radius: 5,  depth: 1.6, rimH: 0.5 },
+  { x: -12, z: -38, radius: 7,  depth: 2.4, rimH: 0.8 },
+  { x:  42, z: -18, radius: 16, depth: 5.5, rimH: 1.8 },
+  { x: -42, z:  30, radius: 8,  depth: 2.8, rimH: 0.9 },
+  { x:  22, z: -36, radius: 5,  depth: 1.5, rimH: 0.5 },
+  { x: -28, z:   8, radius: 4,  depth: 1.2, rimH: 0.4 },
+  { x:   0, z:   0, radius: 10, depth: 3.0, rimH: 1.0 },
+  { x: -18, z:  42, radius: 8,  depth: 2.6, rimH: 0.9 },
+  { x:  30, z:  10, radius: 3,  depth: 0.8, rimH: 0.3 },
+  { x: -8,  z: -18, radius: 3,  depth: 0.9, rimH: 0.3 },
+  { x:  40, z:  46, radius: 7,  depth: 2.2, rimH: 0.7 },
+  { x: -44, z: -10, radius: 5,  depth: 1.7, rimH: 0.6 },
+  { x:  10, z:  22, radius: 4,  depth: 1.1, rimH: 0.4 },
+  { x: -30, z: -44, radius: 12, depth: 4.0, rimH: 1.4 },
+  { x:  46, z:  -4, radius: 3,  depth: 0.7, rimH: 0.2 },
+  { x:  -6, z:  46, radius: 6,  depth: 2.0, rimH: 0.7 },
+];
 
-  const a = hash(ix + iy * 57);
-  const b = hash(ix + 1 + iy * 57);
-  const c = hash(ix + (iy + 1) * 57);
-  const d = hash(ix + 1 + (iy + 1) * 57);
-
-  return a + (b - a) * ux + (c - a) * uy + (d - a + b - c - b + a) * ux * uy;
-}
-
-// Fractal brownian motion — layered noise for terrain variation
-function fbm(x, y, octaves = 6) {
-  let value = 0;
-  let amplitude = 0.5;
-  let frequency = 1.0;
-  let maxVal = 0;
-
-  for (let i = 0; i < octaves; i++) {
-    value += smoothNoise(x * frequency, y * frequency) * amplitude;
-    maxVal += amplitude;
-    amplitude *= 0.5;
-    frequency *= 2.0;
-  }
-
-  return value / maxVal;
-}
-
-// Generate a crater dip at a given world position
-function craterHeight(wx, wz, craterList) {
-  let totalDip = 0;
-  for (const crater of craterList) {
-    const dx = wx - crater.x;
-    const dz = wz - crater.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    const r = crater.radius;
-    if (dist < r * 1.5) {
-      // Bowl shape inside crater
-      const t = dist / r;
+/** Compute height at world (x,z) - purely crater-based, smooth base */
+export function getTerrainHeight(wx, wz) {
+  let h = 0;
+  for (const c of CRATERS) {
+    const dx = wx - c.x;
+    const dz = wz - c.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    const t = d / c.radius;
+    if (t < 2.2) {
       if (t < 1.0) {
-        // Inside crater: concave bowl
-        const bowl = (t * t - 1.0) * crater.depth;
-        // Rim ring just outside bowl center
-        const rim = Math.exp(-((t - 1.0) * (t - 1.0)) / 0.05) * crater.depth * 0.4;
-        totalDip += bowl + rim;
+        // Bowl: smooth cubic concave shape
+        const bowl = (2 * t * t * t - 3 * t * t + 1) * (-c.depth);
+        h += bowl;
       } else {
-        // Outside rim: ejecta fade
-        const ejecta = Math.exp(-((t - 1.0) * (t - 1.0)) / 0.2) * crater.depth * 0.2;
-        totalDip += ejecta;
+        // Rim ring
+        const rimT = (t - 1.0) / 0.35;
+        const rim = Math.exp(-rimT * rimT * 1.5) * c.rimH;
+        h += rim;
       }
     }
   }
-  return totalDip;
+  return h;
 }
 
-/**
- * Generate terrain geometry for the Moon surface.
- * @param {number} size - World size (e.g. 200)
- * @param {number} segments - Number of grid subdivisions
- * @returns {THREE.BufferGeometry}
- */
-export function generateTerrain(size = 200, segments = 128) {
-  const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
-  geometry.rotateX(-Math.PI / 2); // Lay flat
+/** Generate Three.js terrain geometry */
+export function generateTerrain() {
+  const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, GRID_RES - 1, GRID_RES - 1);
+  geo.rotateX(-Math.PI / 2);
 
-  const pos = geometry.attributes.position;
-  const count = pos.count;
-
-  // Pre-define craters scattered across terrain
-  const craters = [
-    { x: 20, z: -15, radius: 12, depth: 3.5 },
-    { x: -40, z: 30, radius: 8, depth: 2.5 },
-    { x: 60, z: 60, radius: 18, depth: 5.0 },
-    { x: -70, z: -50, radius: 15, depth: 4.0 },
-    { x: 10, z: 70, radius: 6, depth: 1.8 },
-    { x: -20, z: -70, radius: 9, depth: 2.8 },
-    { x: 80, z: -30, radius: 20, depth: 6.0 },
-    { x: -80, z: 60, radius: 10, depth: 3.0 },
-    { x: 35, z: -55, radius: 7, depth: 2.0 },
-    { x: -55, z: 15, radius: 5, depth: 1.5 },
-    { x: 0, z: 0, radius: 14, depth: 3.8 },
-    { x: -30, z: 80, radius: 11, depth: 3.2 },
-  ];
-
-  for (let i = 0; i < count; i++) {
-    const wx = pos.getX(i);
-    const wz = pos.getZ(i);
-
-    // Base terrain from fbm noise
-    const nx = wx / size * 4;
-    const nz = wz / size * 4;
-    const baseHeight = fbm(nx, nz, 7) * 8 - 4; // -4 to +4 range
-
-    // Add crater depressions
-    const craterDip = craterHeight(wx, wz, craters);
-
-    pos.setY(i, baseHeight + craterDip);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const z = pos.getZ(i);
+    pos.setY(i, getTerrainHeight(x, z));
   }
-
-  geometry.computeVertexNormals();
-  return geometry;
+  geo.computeVertexNormals();
+  return geo;
 }
 
-/**
- * Generate vertex colors for the terrain based on height.
- * Simulates a dusty gray Moon surface with slight variation.
- * @param {THREE.BufferGeometry} geometry
- */
-export function addTerrainColors(geometry) {
-  const pos = geometry.attributes.position;
-  const count = pos.count;
-  const colors = new Float32Array(count * 3);
-
-  for (let i = 0; i < count; i++) {
-    const y = pos.getY(i);
-    // Moon surface: grayscale with slight variation based on height
-    const base = 0.45 + y * 0.015; // Brighter at peaks
-    const noise = (smoothNoise(pos.getX(i) * 0.3, pos.getZ(i) * 0.3) - 0.5) * 0.06;
-    const gray = Math.max(0.2, Math.min(0.8, base + noise));
-
-    colors[i * 3] = gray;
-    colors[i * 3 + 1] = gray * 0.98; // Slight warm tint
-    colors[i * 3 + 2] = gray * 0.95;
+/** Precompute a flat height map array [GRID_RES x GRID_RES] */
+export function buildHeightMap() {
+  const map = new Float32Array(GRID_RES * GRID_RES);
+  const half = TERRAIN_SIZE / 2;
+  for (let row = 0; row < GRID_RES; row++) {
+    for (let col = 0; col < GRID_RES; col++) {
+      const wx = -half + (col / (GRID_RES - 1)) * TERRAIN_SIZE;
+      const wz = -half + (row / (GRID_RES - 1)) * TERRAIN_SIZE;
+      map[row * GRID_RES + col] = getTerrainHeight(wx, wz);
+    }
   }
-
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return map;
 }
 
-/**
- * Get terrain height at a given world (x, z) position.
- * Used for rover placement on terrain.
- * @param {number} x
- * @param {number} z
- * @param {number} size
- * @returns {number}
- */
-export function getTerrainHeight(x, z, size = 200) {
-  const craters = [
-    { x: 20, z: -15, radius: 12, depth: 3.5 },
-    { x: -40, z: 30, radius: 8, depth: 2.5 },
-    { x: 60, z: 60, radius: 18, depth: 5.0 },
-    { x: -70, z: -50, radius: 15, depth: 4.0 },
-    { x: 10, z: 70, radius: 6, depth: 1.8 },
-    { x: -20, z: -70, radius: 9, depth: 2.8 },
-    { x: 80, z: -30, radius: 20, depth: 6.0 },
-    { x: -80, z: 60, radius: 10, depth: 3.0 },
-    { x: 35, z: -55, radius: 7, depth: 2.0 },
-    { x: -55, z: 15, radius: 5, depth: 1.5 },
-    { x: 0, z: 0, radius: 14, depth: 3.8 },
-    { x: -30, z: 80, radius: 11, depth: 3.2 },
-  ];
-
-  const nx = x / size * 4;
-  const nz = z / size * 4;
-  const baseHeight = fbm(nx, nz, 7) * 8 - 4;
-  const craterDip = craterHeight(x, z, craters);
-
-  return baseHeight + craterDip;
+/** Precompute crater "danger" map — used for path planning */
+export function buildCraterMask(inflate = 1.0) {
+  const mask = new Float32Array(GRID_RES * GRID_RES);
+  const half = TERRAIN_SIZE / 2;
+  for (let row = 0; row < GRID_RES; row++) {
+    for (let col = 0; col < GRID_RES; col++) {
+      const wx = -half + (col / (GRID_RES - 1)) * TERRAIN_SIZE;
+      const wz = -half + (row / (GRID_RES - 1)) * TERRAIN_SIZE;
+      let val = 0;
+      for (const c of CRATERS) {
+        const d = Math.sqrt((wx - c.x) ** 2 + (wz - c.z) ** 2);
+        const t = d / (c.radius * inflate);
+        if (t < 1.5) {
+          val = Math.max(val, Math.max(0, 1.0 - t / 1.5));
+        }
+      }
+      mask[row * GRID_RES + col] = val;
+    }
+  }
+  return mask;
 }
 
-/**
- * Generate random rock positions on the terrain.
- * Rocks are scattered far from the center.
- */
-export function generateRockPositions(count = 40, terrainSize = 200) {
+/** Compute slope magnitude map from height map */
+export function buildSlopeMap(hMap) {
+  const slope = new Float32Array(GRID_RES * GRID_RES);
+  const cellSize = TERRAIN_SIZE / (GRID_RES - 1);
+  for (let row = 1; row < GRID_RES - 1; row++) {
+    for (let col = 1; col < GRID_RES - 1; col++) {
+      const dX = (hMap[row * GRID_RES + col + 1] - hMap[row * GRID_RES + col - 1]) / (2 * cellSize);
+      const dZ = (hMap[(row + 1) * GRID_RES + col] - hMap[(row - 1) * GRID_RES + col]) / (2 * cellSize);
+      slope[row * GRID_RES + col] = Math.sqrt(dX * dX + dZ * dZ);
+    }
+  }
+  return slope;
+}
+
+/** Generate rock scatter positions (small rocks, not on crater floors) */
+export function generateRockPositions(count = 60) {
   const rocks = [];
-  const half = terrainSize / 2 - 10;
-
-  for (let i = 0; i < count; i++) {
+  const half = TERRAIN_SIZE / 2 - 3;
+  let attempts = 0;
+  while (rocks.length < count && attempts < count * 10) {
+    attempts++;
     const x = (Math.random() - 0.5) * 2 * half;
     const z = (Math.random() - 0.5) * 2 * half;
-    // Avoid placing rocks too close to starting position
-    if (Math.abs(x) < 8 && Math.abs(z) < 8) continue;
-    const y = getTerrainHeight(x, z);
-    const scale = 0.3 + Math.random() * 1.2;
-    const rotY = Math.random() * Math.PI * 2;
-    rocks.push({ x, y, z, scale, rotY });
+    // Only place on crater rims or flat areas, avoid deep bowls
+    const h = getTerrainHeight(x, z);
+    if (h > -0.5) {
+      const scale = 0.12 + Math.random() * 0.5;
+      rocks.push({ x, y: h, z, scale, rotY: Math.random() * Math.PI * 2 });
+    }
   }
-
   return rocks;
 }
