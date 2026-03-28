@@ -140,8 +140,8 @@ export function createLunarRegolithTexture(size = 512) {
       const ns = (Math.sin((x + y) * 0.14 + 1.9) * Math.cos((x - y) * 0.11 + 0.7)) * 0.12;
 
       const combined = n0 * 0.35 + n1 * 0.24 + n2 * 0.18 + n3 * 0.12 + n4 * 0.07 + n5 * 0.04 + ns * 0.10;
-      // Range 0–1 → pure neutral grey 68–128 — matches reference photo (no warm tint)
-      const v = Math.round(68 + combined * 60);
+      // Range 0–1 → pure neutral grey 88–148 — medium highland grey (no warm tint)
+      const v = Math.round(88 + combined * 60);
       d[i]   = v;
       d[i+1] = v;   // neutral grey: R = G = B
       d[i+2] = v;
@@ -229,19 +229,11 @@ export function generateTerrain() {
     // Crater albedo: darker interior, slightly brighter fresh rim
     const cbias = craterColourBias(wx, wz);
 
-    // ── Mare (dark basalt plain) patches ──────────────────────────────────
-    // Two large smooth dark basalt regions; values go down to ~-0.14
-    const mare =
-      Math.sin(wx * 0.038 + 0.60) * Math.cos(wz * 0.042 + 1.40) * 0.090 +
-      Math.sin(wx * 0.050 + 3.10) * Math.cos(wz * 0.035 + 2.80) * 0.065;
-    // Push below 0 → very dark where both waves align negatively
-    const mareDark = Math.min(0, mare) * 1.8; // amplify dark regions only
-
-    // ── Highland large-scale brightness variation ──────────────────────────
+    // ── Large-scale albedo variation (gentle — no deep dark maria) ───────
     const macro =
-      Math.sin(wx * 0.072 + 1.8) * Math.cos(wz * 0.068 + 0.4) * 0.028 +
-      Math.sin(wx * 0.145 + 3.2) * Math.cos(wz * 0.130 + 2.7) * 0.016 +
-      Math.sin(wx * 0.310 + 0.6) * Math.cos(wz * 0.285 + 4.1) * 0.009;
+      Math.sin(wx * 0.060 + 1.8) * Math.cos(wz * 0.055 + 0.4) * 0.022 +
+      Math.sin(wx * 0.130 + 3.2) * Math.cos(wz * 0.120 + 2.7) * 0.014 +
+      Math.sin(wx * 0.270 + 0.6) * Math.cos(wz * 0.250 + 4.1) * 0.008;
 
     // ── Fine grain noise ──────────────────────────────────────────────────
     const grain =
@@ -249,13 +241,12 @@ export function generateTerrain() {
       Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.007 +
       Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.003;
 
-    // Composite luminance — base 0.390 (matches image neutral highland mid-tone)
-    const lum = Math.max(0.11, Math.min(0.56,
-      0.390
-      - slope  * 0.095  // steep walls: -9.5%
-      + cbias            // crater bias: ±22%
-      + mareDark         // dark mare patches: down to -16%
-      + macro            // highland variation: ±4%
+    // Composite luminance — base 0.470 (medium grey highland, not too dark)
+    const lum = Math.max(0.20, Math.min(0.68,
+      0.470
+      - slope  * 0.085  // steep walls darker
+      + cbias            // crater interior/rim: ±22%
+      + macro            // gentle large-scale variation: ±4%
       + grain            // micro grain: ±2%
     ));
 
