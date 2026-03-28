@@ -290,18 +290,24 @@ function TrailLine({ points }) {
   );
 }
 
-// ---- Waypoint markers ----
-function WaypointMarker({ pos, color }) {
+// ---- Waypoint markers (numbered) ----
+const WP_COLORS = ['#22ff55','#ffcc22','#44ddff','#ff88ff','#ff4422','#aaffaa'];
+
+function WaypointMarker({ pos, idx, total }) {
   if (!pos) return null;
   const y = getTerrainHeight(pos.x, pos.z);
+  const isStart = idx === 0;
+  const isEnd   = idx === total - 1;
+  const color = isStart ? '#22ff55' : isEnd ? '#ff4422' : WP_COLORS[idx % WP_COLORS.length];
+  const h = isStart ? 1.4 : isEnd ? 1.4 : 1.0;
   return (
     <group position={[pos.x, y, pos.z]}>
       <mesh>
-        <cylinderGeometry args={[0, 0.35, 1.1, 6]} />
-        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} transparent opacity={0.9} />
+        <cylinderGeometry args={[0, 0.30, h, 6]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.65} transparent opacity={0.92} />
       </mesh>
-      <mesh position={[0, -0.1, 0]}>
-        <cylinderGeometry args={[0.35, 0.35, 0.08, 12]} />
+      <mesh position={[0, -0.05, 0]}>
+        <cylinderGeometry args={[0.30, 0.30, 0.07, 10]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} transparent opacity={0.5} />
       </mesh>
     </group>
@@ -334,7 +340,7 @@ function CameraController({ roverRef, cameraMode, orbitRef }) {
 export default function MoonScene({
   roverState, setRoverState, pathRef,
   routes, activeRoute,
-  startPos, endPos,
+  waypoints,
   cameraMode, wireframe, sunAngleDeg,
   learningModel,
 }) {
@@ -386,8 +392,10 @@ export default function MoonScene({
 
       <TrailLine points={trail} />
 
-      {startPos && <WaypointMarker pos={startPos} color="#22ff55" />}
-      {endPos   && <WaypointMarker pos={endPos}   color="#ff4422" />}
+      {/* Numbered waypoint markers */}
+      {waypoints && waypoints.map((wp, i) => (
+        <WaypointMarker key={i} pos={wp} idx={i} total={waypoints.length} />
+      ))}
 
       <RoverPhysics
         roverRef={roverRef}
@@ -400,20 +408,29 @@ export default function MoonScene({
 
       <CameraController roverRef={roverRef} cameraMode={cameraMode} orbitRef={orbitRef} />
 
-      {/* Full touchpad + mouse + touch controls */}
+      {/* Map-like controls: LEFT=PAN, RIGHT=ROTATE, SCROLL=ZOOM, TOUCH=PAN+PINCH */}
       <OrbitControls
         ref={orbitRef}
-        enabled={true}
         enablePan={true}
         enableZoom={true}
         enableRotate={true}
+        enableDamping={true}
+        dampingFactor={0.07}
         maxPolarAngle={Math.PI / 2.02}
-        minDistance={5}
-        maxDistance={120}
-        zoomSpeed={1.2}
-        panSpeed={0.8}
-        rotateSpeed={0.6}
-        touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
+        minDistance={4}
+        maxDistance={130}
+        zoomSpeed={1.4}
+        panSpeed={0.9}
+        rotateSpeed={0.55}
+        mouseButtons={{
+          LEFT:   THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT:  THREE.MOUSE.ROTATE,
+        }}
+        touches={{
+          ONE: THREE.TOUCH.PAN,
+          TWO: THREE.TOUCH.DOLLY_ROTATE,
+        }}
       />
     </Canvas>
   );
