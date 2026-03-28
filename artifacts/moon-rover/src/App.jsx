@@ -49,9 +49,9 @@ function ToastContainer({ toasts, onDismiss }) {
 }
 
 export default function App() {
-  const [roverState, setRoverState] = useState({ x:-38, y:0, z:-38, speed:0, heading:0, autoMode:false });
+  const [roverState, setRoverState] = useState({ x:-25, y:0, z:-20, speed:0, heading:0, autoMode:false });
   // waypoints: ordered array of {x, z} — first = start, last = end, middle = intermediate
-  const [waypoints, setWaypoints]   = useState([{ x:-38, z:-38 }, { x:38, z:38 }]);
+  const [waypoints, setWaypoints]   = useState([{ x:-25, z:-20 }, { x:25, z:18 }]);
   const [routes, setRoutes]         = useState(null); // { SAFE:{path,stats}, ECO:{path,stats}, ... }
   const [activeRoute, setActiveRoute] = useState('AUTO');
   const [sunAngleDeg, setSunAngleDeg] = useState(45);
