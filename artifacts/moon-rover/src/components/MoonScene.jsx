@@ -30,10 +30,12 @@ function Terrain({ wireframe }) {
   return (
     <mesh geometry={_geo} receiveShadow>
       {wireframe ? (
-        <meshStandardMaterial wireframe color="#44aa44" />
+        <meshStandardMaterial key="wire" wireframe color="#44aa44" />
       ) : (
         <meshStandardMaterial
+          key="proc"
           vertexColors
+          color="#ffffff"
           normalMap={_normalMap}
           normalScale={[0.14, 0.14]}
           roughness={0.88}
