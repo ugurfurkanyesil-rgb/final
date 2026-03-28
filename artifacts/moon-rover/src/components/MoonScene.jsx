@@ -34,9 +34,8 @@ function Terrain({ wireframe }) {
       ) : (
         <meshStandardMaterial
           vertexColors
-          map={_regolithTex}
           normalMap={_normalMap}
-          normalScale={[0.18, 0.18]}
+          normalScale={[0.14, 0.14]}
           roughness={0.88}
           metalness={0.04}
           envMapIntensity={0.0}
