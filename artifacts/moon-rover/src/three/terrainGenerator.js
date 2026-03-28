@@ -140,11 +140,11 @@ export function createLunarRegolithTexture(size = 512) {
       const ns = (Math.sin((x + y) * 0.14 + 1.9) * Math.cos((x - y) * 0.11 + 0.7)) * 0.12;
 
       const combined = n0 * 0.35 + n1 * 0.24 + n2 * 0.18 + n3 * 0.12 + n4 * 0.07 + n5 * 0.04 + ns * 0.10;
-      // Range 0–1 → display grey 92–148 (matches LRO albedo 0.10–0.19 display-mapped)
-      const v = Math.round(92 + combined * 56);
+      // Range 0–1 → pure neutral grey 68–128 — matches reference photo (no warm tint)
+      const v = Math.round(68 + combined * 60);
       d[i]   = v;
-      d[i+1] = Math.round(v * 0.974);   // slight warm tint (R > G > B)
-      d[i+2] = Math.round(v * 0.935);
+      d[i+1] = v;   // neutral grey: R = G = B
+      d[i+2] = v;
       d[i+3] = 255;
     }
   }
@@ -213,49 +213,56 @@ export function generateTerrain() {
   }
   geo.computeVertexNormals();
 
-  // 2. Vertex colours — LRO/Apollo-calibrated lunar grey
-  //    Physical albedo ~0.10–0.19 → display-mapped to ~0.36–0.60 range
-  //    (gamma-corrected sRGB, viewed at typical monitor brightness)
+  // 2. Vertex colours — real Moon surface palette (reference: LRO/Kaguya imagery)
+  //    Pure neutral grey, no warm tint.
+  //    Highlands base ≈ 0.38–0.44, Mare dark patches ≈ 0.14–0.24
   const normals = geo.attributes.normal;
   const colors  = new Float32Array(pos.count * 3);
 
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i), wz = pos.getZ(i);
 
-    // Slope shading (steep faces are noticeably darker — self-shadowing)
-    const ny    = Math.abs(normals.getY(i));   // 1 = flat, 0 = vertical wall
+    // Slope darkening (crater walls and steep terrain absorb more light)
+    const ny    = Math.abs(normals.getY(i));
     const slope = 1.0 - ny;
 
-    // Crater albedo bias: interiors darker, rims brighter
+    // Crater albedo: darker interior, slightly brighter fresh rim
     const cbias = craterColourBias(wx, wz);
 
-    // 4-octave large-scale albedo variation (mare/highland patchwork)
+    // ── Mare (dark basalt plain) patches ──────────────────────────────────
+    // Two large smooth dark basalt regions; values go down to ~-0.14
+    const mare =
+      Math.sin(wx * 0.038 + 0.60) * Math.cos(wz * 0.042 + 1.40) * 0.090 +
+      Math.sin(wx * 0.050 + 3.10) * Math.cos(wz * 0.035 + 2.80) * 0.065;
+    // Push below 0 → very dark where both waves align negatively
+    const mareDark = Math.min(0, mare) * 1.8; // amplify dark regions only
+
+    // ── Highland large-scale brightness variation ──────────────────────────
     const macro =
-      Math.sin(wx * 0.055 + 1.8) * Math.cos(wz * 0.062 + 0.4) * 0.035 +
-      Math.sin(wx * 0.130 + 3.2) * Math.cos(wz * 0.115 + 2.7) * 0.020 +
-      Math.sin(wx * 0.280 + 0.6) * Math.cos(wz * 0.255 + 4.1) * 0.012 +
-      Math.sin(wx * 0.550 + 5.0) * Math.cos(wz * 0.510 + 1.5) * 0.008;
+      Math.sin(wx * 0.072 + 1.8) * Math.cos(wz * 0.068 + 0.4) * 0.028 +
+      Math.sin(wx * 0.145 + 3.2) * Math.cos(wz * 0.130 + 2.7) * 0.016 +
+      Math.sin(wx * 0.310 + 0.6) * Math.cos(wz * 0.285 + 4.1) * 0.009;
 
-    // Fine grain noise (gives per-vertex powder texture variation)
+    // ── Fine grain noise ──────────────────────────────────────────────────
     const grain =
-      Math.sin(wx * 1.80 + 0.9) * Math.cos(wz * 1.65 + 3.4) * 0.016 +
-      Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.009 +
-      Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.004;
+      Math.sin(wx * 1.80 + 0.9) * Math.cos(wz * 1.65 + 3.4) * 0.012 +
+      Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.007 +
+      Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.003;
 
-    // Composite luminance:
-    //   Base 0.420 = average display-grey matching LRO albedo survey
-    const lum = Math.max(0.24, Math.min(0.62,
-      0.420
-      - slope * 0.080   // steep walls: -8%
-      + cbias            // crater interior/rim: ±20%
-      + macro            // large-scale variation: ±5%
-      + grain            // micro grain: ±3%
+    // Composite luminance — base 0.390 (matches image neutral highland mid-tone)
+    const lum = Math.max(0.11, Math.min(0.56,
+      0.390
+      - slope  * 0.095  // steep walls: -9.5%
+      + cbias            // crater bias: ±22%
+      + mareDark         // dark mare patches: down to -16%
+      + macro            // highland variation: ±4%
+      + grain            // micro grain: ±2%
     ));
 
-    // Apollo soil spectroscopy tint: R:G:B ≈ 1.000 : 0.972 : 0.928
-    colors[i * 3]     = lum * 1.000;
-    colors[i * 3 + 1] = lum * 0.972;
-    colors[i * 3 + 2] = lum * 0.928;
+    // Pure neutral grey — R = G = B (no warm tint, matches reference photo)
+    colors[i * 3]     = lum;
+    colors[i * 3 + 1] = lum;
+    colors[i * 3 + 2] = lum;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return geo;
