@@ -4,9 +4,10 @@
  * Full touchpad / mouse / scroll controls.
  */
 
-import { useRef, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useRef, useEffect, useMemo, Suspense } from 'react';
+import { Canvas, useFrame, useLoader } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
 import {
   generateTerrain, getTerrainHeight, generateRockPositions,
@@ -32,100 +33,45 @@ function Terrain({ wireframe }) {
   );
 }
 
-// ---- Detailed Rover ----
-function RoverBody({ wireframe }) {
-  const wMat = <meshStandardMaterial color="#1a1a10" roughness={0.95} metalness={0.05} wireframe={wireframe} />;
-  const bodyMat = <meshStandardMaterial color="#8a8a7a" roughness={0.72} metalness={0.32} wireframe={wireframe} />;
-  const panelMat = <meshStandardMaterial color="#1c2e88" roughness={0.22} metalness={0.75} wireframe={wireframe} />;
-  const silverMat = <meshStandardMaterial color="#b4b4a0" roughness={0.55} metalness={0.55} wireframe={wireframe} />;
-  const rtgMat = <meshStandardMaterial color="#6a6a58" roughness={0.80} metalness={0.40} wireframe={wireframe} />;
+// ---- STL Rover ----
+const STL_URL = `${import.meta.env.BASE_URL}rover.stl`;
 
+function RoverSTL({ wireframe }) {
+  const rawGeo = useLoader(STLLoader, STL_URL);
+
+  const geo = useMemo(() => {
+    const g = rawGeo.clone();
+    g.center();
+    g.computeBoundingBox();
+    const size = new THREE.Vector3();
+    g.boundingBox.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    // Normalize to fit in ~1.4 world units (RoverPhysics applies 1.67× on top)
+    const s = 1.4 / maxDim;
+    g.scale(s, s, s);
+    g.computeVertexNormals();
+    return g;
+  }, [rawGeo]);
+
+  // STL files are typically Z-up; Three.js is Y-up → rotate -90° on X
   return (
-    <group>
-      {/* Chassis */}
-      <mesh position={[0, 0.21, 0]} castShadow>{bodyMat}
-        <boxGeometry args={[0.88, 0.20, 1.28]} />
-      </mesh>
-      {/* Electronics bay */}
-      <mesh position={[0, 0.43, 0.06]} castShadow>{bodyMat}
-        <boxGeometry args={[0.60, 0.17, 0.82]} />
-      </mesh>
-      {/* Top equipment box */}
-      <mesh position={[0, 0.56, -0.05]} castShadow>
-        <meshStandardMaterial color="#9e9e8c" roughness={0.65} metalness={0.35} wireframe={wireframe} />
-        <boxGeometry args={[0.40, 0.12, 0.55]} />
-      </mesh>
-      {/* RTG rear */}
-      <mesh position={[0, 0.28, -0.65]} rotation={[Math.PI/2,0,0]} castShadow>{rtgMat}
-        <cylinderGeometry args={[0.11, 0.11, 0.46, 8]} />
-      </mesh>
-      {/* RTG fins */}
-      {[0,1,2,3].map(i => (
-        <mesh key={i} position={[0, 0.28, -0.65]} rotation={[Math.PI/2, i*Math.PI/4, 0]} castShadow>
-          <meshStandardMaterial color="#555544" roughness={0.9} metalness={0.2} />
-          <boxGeometry args={[0.22, 0.025, 0.44]} />
-        </mesh>
-      ))}
-      {/* Solar panels */}
-      <mesh position={[-0.70, 0.51, 0.06]} castShadow>{panelMat}
-        <boxGeometry args={[0.48, 0.022, 0.76]} />
-      </mesh>
-      <mesh position={[0.70, 0.51, 0.06]} castShadow>{panelMat}
-        <boxGeometry args={[0.48, 0.022, 0.76]} />
-      </mesh>
-      {/* Panel grid lines */}
-      {[-1,1].map(side => [0,1,2].map(j => (
-        <mesh key={`${side}-${j}`} position={[side*0.70, 0.525, -0.18 + j*0.18]}>
-          <boxGeometry args={[0.48, 0.006, 0.006]} />
-          <meshStandardMaterial color="#0a1555" />
-        </mesh>
-      )))}
-      {/* Camera mast */}
-      <mesh position={[0, 0.79, 0.35]} castShadow>{silverMat}
-        <cylinderGeometry args={[0.022, 0.026, 0.42, 7]} />
-      </mesh>
-      {/* Camera head */}
-      <mesh position={[0, 1.01, 0.35]} castShadow>
-        <meshStandardMaterial color="#1a1a1a" roughness={0.5} metalness={0.6} wireframe={wireframe} />
-        <boxGeometry args={[0.17, 0.12, 0.10]} />
-      </mesh>
-      {/* Camera lens */}
-      <mesh position={[0, 1.01, 0.41]}>
-        <cylinderGeometry args={[0.03, 0.03, 0.02, 8]} />
-        <meshStandardMaterial color="#050508" roughness={0.1} metalness={0.8} />
-      </mesh>
-      {/* Antenna */}
-      <mesh position={[0.26, 0.70, -0.12]} castShadow>{silverMat}
-        <cylinderGeometry args={[0.016, 0.016, 0.35, 5]} />
-      </mesh>
-      <mesh position={[0.26, 0.89, -0.12]}>
-        <sphereGeometry args={[0.038, 7, 7]} />
-        <meshStandardMaterial color="#ff3333" emissive="#ff1111" emissiveIntensity={0.8} />
-      </mesh>
-      {/* 6 wheels */}
-      {[-0.51, 0.51].map((xPos, ci) =>
-        [-0.54, 0.0, 0.54].map((zOff, ri) => (
-          <group key={`w${ci}${ri}`} position={[xPos, 0.04, zOff]}>
-            <mesh rotation={[0,0,Math.PI/2]} castShadow>
-              {wMat}
-              <cylinderGeometry args={[0.175, 0.175, 0.095, 12]} />
-            </mesh>
-            {/* Tread chevrons */}
-            {Array.from({length:6},(_,k) => (
-              <mesh key={k} rotation={[k*Math.PI/3,0,Math.PI/2]}>
-                <torusGeometry args={[0.175, 0.011, 4, 10, Math.PI*0.55]} />
-                <meshStandardMaterial color="#0e0e08" />
-              </mesh>
-            ))}
-            {/* Suspension arm */}
-            <mesh position={[xPos<0?0.15:-0.15, 0.14, 0]}>
-              <boxGeometry args={[0.26, 0.035, 0.035]} />
-              <meshStandardMaterial color="#6a6a5a" roughness={0.8} />
-            </mesh>
-          </group>
-        ))
-      )}
-    </group>
+    <mesh geometry={geo} castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+      <meshStandardMaterial
+        color="#9a9a8a"
+        roughness={0.65}
+        metalness={0.40}
+        wireframe={wireframe}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+function RoverBody({ wireframe }) {
+  return (
+    <Suspense fallback={null}>
+      <RoverSTL wireframe={wireframe} />
+    </Suspense>
   );
 }
 
