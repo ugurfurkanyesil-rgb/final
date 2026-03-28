@@ -136,23 +136,11 @@ export function createLunarRegolithTexture(size = 512) {
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
       const i = (py * size + px) * 4;
-
-      // All terms are seamlessly tileable (integer-k frequencies)
-      const n0 = Math.sin(px * f1 + 1.1) * Math.cos(py * f1 + 2.3) * 0.40 + 0.50;
-      const n1 = Math.sin(px * f2 + 3.7) * Math.cos(py * f2 + 0.9) * 0.25 + 0.50;
-      const n2 = Math.sin(px * f3 + 5.2) * Math.cos(py * f3 + 4.4) * 0.16 + 0.50;
-      const n3 = Math.sin(px * f4 + 2.8) * Math.cos(py * f4 + 1.6) * 0.10 + 0.50;
-      const n4 = Math.sin(px * f5 + 0.5) * Math.cos(py * f5 + 3.2) * 0.05 + 0.50;
-      const n5 = Math.sin(px * f6 + 4.1) * Math.cos(py * f6 + 5.8) * 0.03 + 0.50;
-      // Cross-axis blend for organic feel (still seamless: uses same integer freq)
-      const nc = Math.sin(px * f2 + py * f1 * 0.5 + 2.0) * 0.08 + 0.50;
-
-      const combined = n0*0.32 + n1*0.23 + n2*0.17 + n3*0.13 + n4*0.08 + n5*0.05 + nc*0.10 - 0.50*0.98;
-      // 0–1 → bright neutral grey 118–192
-      const v = Math.min(255, Math.max(0, Math.round(118 + combined * 74)));
-      d[i]   = v;
-      d[i+1] = v;
-      d[i+2] = v;
+      // Flat neon silver-grey — no visible pattern, just uniform colour
+      // R:G:B = 185:194:204 → cool blue-tinted bright grey (neon grey)
+      d[i]   = 185;
+      d[i+1] = 194;
+      d[i+2] = 204;
       d[i+3] = 255;
     }
   }
@@ -225,48 +213,29 @@ export function generateTerrain() {
   }
   geo.computeVertexNormals();
 
-  // 2. Vertex colours — real Moon surface palette (reference: LRO/Kaguya imagery)
-  //    Pure neutral grey, no warm tint.
-  //    Highlands base ≈ 0.38–0.44, Mare dark patches ≈ 0.14–0.24
+  // 2. Vertex colours — neon silver-grey, no patterns, only crater shading
   const normals = geo.attributes.normal;
   const colors  = new Float32Array(pos.count * 3);
 
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i), wz = pos.getZ(i);
 
-    // Slope darkening (crater walls and steep terrain absorb more light)
+    // Only slope + crater — NO macro / grain noise patterns
     const ny    = Math.abs(normals.getY(i));
     const slope = 1.0 - ny;
-
-    // Crater albedo: darker interior, slightly brighter fresh rim
     const cbias = craterColourBias(wx, wz);
 
-    // ── Large-scale patchwork (gives varied bright/dark zones across terrain) ─
-    const macro =
-      Math.sin(wx * 0.055 + 1.8) * Math.cos(wz * 0.050 + 0.4) * 0.045 +
-      Math.sin(wx * 0.120 + 3.2) * Math.cos(wz * 0.110 + 2.7) * 0.030 +
-      Math.sin(wx * 0.250 + 0.6) * Math.cos(wz * 0.230 + 4.1) * 0.018 +
-      Math.sin((wx - wz) * 0.080 + 2.0) * 0.014;
-
-    // ── Fine grain for micro-texture variation ────────────────────────────
-    const grain =
-      Math.sin(wx * 1.80 + 0.9) * Math.cos(wz * 1.65 + 3.4) * 0.018 +
-      Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.010 +
-      Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.005;
-
-    // Composite luminance — bright lunar highland base 0.62
-    const lum = Math.max(0.24, Math.min(0.88,
-      0.620
-      - slope  * 0.090  // steep walls darker
-      + cbias            // crater dark/bright: ±42%
-      + macro            // large patches: ±11%
-      + grain            // micro grain: ±3%
+    // Bright neon-grey base (0.76), clamp wide to show crater contrast
+    const lum = Math.max(0.26, Math.min(0.92,
+      0.760
+      - slope * 0.080   // wall shading only
+      + cbias            // crater dark floor / bright rim
     ));
 
-    // Pure neutral grey — R = G = B (no warm tint, matches reference photo)
-    colors[i * 3]     = lum;
-    colors[i * 3 + 1] = lum;
-    colors[i * 3 + 2] = lum;
+    // Cool silver tint: slight blue cast (neon grey feel)
+    colors[i * 3]     = lum * 0.91;  // R — slightly pulled back
+    colors[i * 3 + 1] = lum * 0.95;  // G — near neutral
+    colors[i * 3 + 2] = lum * 1.00;  // B — dominant for cool neon look
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return geo;

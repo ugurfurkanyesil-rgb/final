@@ -34,13 +34,9 @@ function Terrain({ wireframe }) {
       ) : (
         <meshStandardMaterial
           vertexColors
-          /* Regolith grain detail texture — multiplied on top of vertex colours */
-          map={_regolithTex}
-          /* Micro-normal map for sub-pixel grain bumps */
-          normalMap={_normalMap}
-          normalScale={[0.22, 0.22]}
-          roughness={0.98}
-          metalness={0.00}
+          /* Flat neon-grey — no texture patterns, colour comes from vertex colours */
+          roughness={0.88}
+          metalness={0.04}
           envMapIntensity={0.0}
         />
       )}

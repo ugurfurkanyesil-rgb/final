@@ -80,13 +80,12 @@ export function getTerrainCanvas(size = 256) {
 
       v = Math.max(0.14, Math.min(0.96, v));
 
-      // Convert to RGB — very slight warm bias on lit faces, cool in shadow
-      const bv = Math.round(v * 255);
-      const warmBias = diff * 8;
+      // Neon silver-grey — cool blue tint, no warm bias
+      const bv  = Math.round(v * 255);
       const idx = (py * size + px2) * 4;
-      px[idx]   = Math.min(255, bv + warmBias);
-      px[idx+1] = bv;
-      px[idx+2] = Math.max(0,   bv - warmBias);
+      px[idx]   = Math.round(bv * 0.91);  // R slightly back
+      px[idx+1] = Math.round(bv * 0.95);  // G near neutral
+      px[idx+2] = bv;                      // B dominant (cool)
       px[idx+3] = 255;
     }
   }
