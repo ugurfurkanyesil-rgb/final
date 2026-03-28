@@ -88,10 +88,10 @@ function getWallMap() {
       const wx = -HALF + (col / (GRID_RES - 1)) * TERRAIN_SIZE;
       const wz = -HALF + (row / (GRID_RES - 1)) * TERRAIN_SIZE;
 
-      // Crater interior = impassable wall
+      // Crater interior + rim = impassable wall (full bowl + steep rim walls)
       for (const c of CRATERS) {
         const d = Math.sqrt((wx - c.x) ** 2 + (wz - c.z) ** 2);
-        if (d < c.radius * 0.88) { _wallMap[row * GRID_RES + col] = 1; break; }
+        if (d < c.radius * 1.05) { _wallMap[row * GRID_RES + col] = 1; break; }
       }
 
       // Debris exclusion zones

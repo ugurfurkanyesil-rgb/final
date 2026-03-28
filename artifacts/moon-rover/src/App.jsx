@@ -6,7 +6,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import RightPanel from './components/RightPanel';
 import { planAllRoutes, clearPathCache, getHazardAtPoint } from './utils/pathfinder';
-import { getTerrainHeight, buildHeightMap, buildSlopeMap, buildCraterMask } from './three/terrainGenerator';
+import { getTerrainHeight, buildHeightMap, buildSlopeMap, buildCraterMask, CRATERS } from './three/terrainGenerator';
 import { LearningModel } from './utils/learningModel';
 
 const MoonScene = lazy(() => import('./components/MoonScene'));
@@ -100,27 +100,24 @@ export default function App() {
   // ---- Waypoint management ----
   const addWaypoint = useCallback((pos) => {
     const { sm: sm2, cm: cm2 } = getMaps();
-    const hazard = getHazardAtPoint(pos.x, pos.z, cm2, sm2);
 
-    // Hard crater check — reject immediately if inside crater bowl
-    const { col, row } = (() => {
-      const GRID_RES = 256, HALF2 = 50;
-      const c = Math.round(((pos.x + HALF2) / 100) * (GRID_RES - 1));
-      const r = Math.round(((pos.z + HALF2) / 100) * (GRID_RES - 1));
-      return { col: Math.max(0, Math.min(GRID_RES-1, c)), row: Math.max(0, Math.min(GRID_RES-1, r)) };
-    })();
-    const craterVal = cm2 ? cm2[row * 256 + col] : 0;
-
-    if (craterVal > 0.75) {
+    // Hard crater check — direct distance test against every crater (full bowl + rim)
+    const inCrater = CRATERS.some(c => {
+      const d = Math.sqrt((pos.x - c.x) ** 2 + (pos.z - c.z) ** 2);
+      return d < c.radius * 1.05;
+    });
+    if (inCrater) {
       showToast(
-        '⛔ WAYPOINT REJECTED — Inside a crater! Rover can never enter crater zones. Choose flat terrain.',
+        '⛔ WAYPOINT REDDEDİLDİ — Krater içinde! Rover hiçbir zaman krater bölgelerine giremez. Düz zemin seçin.',
         'error', 7000
       );
       return;
     }
+
+    const hazard = getHazardAtPoint(pos.x, pos.z, cm2, sm2);
     if (hazard > 0.45) {
       showToast(
-        `NO PATH FOUND — Waypoint in hazardous zone (danger: ${(hazard*100).toFixed(0)}%). Choose safer terrain.`,
+        `⛔ WAYPOINT REDDEDİLDİ — Tehlikeli bölge (tehlike: ${(hazard*100).toFixed(0)}%). Daha güvenli arazi seçin.`,
         'error', 6000
       );
       return;
@@ -148,16 +145,17 @@ export default function App() {
   // Override first waypoint → always teleport rover
   const setStartWaypoint = useCallback((pos) => {
     const { sm: sm2, cm: cm2 } = getMaps();
-    const col = Math.max(0, Math.min(255, Math.round(((pos.x + 50) / 100) * 255)));
-    const row = Math.max(0, Math.min(255, Math.round(((pos.z + 50) / 100) * 255)));
-    const craterVal = cm2 ? cm2[row * 256 + col] : 0;
-    if (craterVal > 0.75) {
-      showToast('⛔ WAYPOINT REJECTED — Inside a crater! Rover never enters crater zones. Choose flat terrain.', 'error', 7000);
+    const inCrater = CRATERS.some(c => {
+      const d = Math.sqrt((pos.x - c.x) ** 2 + (pos.z - c.z) ** 2);
+      return d < c.radius * 1.05;
+    });
+    if (inCrater) {
+      showToast('⛔ BAŞLANGIÇ NOKTASİ REDDEDİLDİ — Krater içinde! Düz zemin seçin.', 'error', 7000);
       return;
     }
     const hazard = getHazardAtPoint(pos.x, pos.z, cm2, sm2);
     if (hazard > 0.45) {
-      showToast('NO PATH FOUND — Start point in hazardous zone. Choose flat terrain.', 'error', 6000);
+      showToast('⛔ BAŞLANGIÇ NOKTASİ REDDEDİLDİ — Tehlikeli bölge. Daha güvenli arazi seçin.', 'error', 6000);
       return;
     }
     const y = getTerrainHeight(pos.x, pos.z);
