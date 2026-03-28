@@ -62,14 +62,6 @@ function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick })
       ctx.drawImage(src, vx/MAP_S*ss, vy/MAP_S*ss, span/MAP_S*ss, span/MAP_S*ss, 0,0,W,H);
     }
 
-    // Grid
-    ctx.strokeStyle='rgba(80,130,80,0.15)'; ctx.lineWidth=0.4;
-    for (let i=0; i<=10; i++) {
-      const wx=-HALF+i/10*TERRAIN_SIZE;
-      const {x}=w2m(wx,0,vx,vy,zoom); ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
-      const {y}=w2m(0,wx,vx,vy,zoom); ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
-    }
-
     // Craters
     for (const c of CRATERS) {
       const {x:cx,y:cy}=w2m(c.x,c.z,vx,vy,zoom);
