@@ -162,31 +162,29 @@ function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningM
 }
 
 // ---- Wheel Tracks ----
-const MAX_TRACK_PAIRS = 600;        // ring buffer size (600 pairs = 1200 instances)
-const TRACK_STEP      = 0.28;       // world-units between track placements
-const TRACK_W         = 0.155;      // width of each tread mark (wheel width × 1.67 scale)
-const TRACK_L         = 0.36;       // length of each segment (slightly overlapping)
-const TRACK_H         = 0.018;      // height (nearly flat on terrain)
-const WHEEL_OFFSET    = 0.852;      // lateral distance rover center → wheel centre (0.51 × 1.67)
+const MAX_TRACK_PAIRS = 800;
+const TRACK_STEP      = 0.16;   // dense placement — fires every ~16 cm of travel
+const TRACK_W         = 0.19;   // visible track width (wheel width + margin)
+const TRACK_L         = 0.28;   // segment length (slightly overlapping)
+const WHEEL_OFFSET    = 0.852;  // rover center → wheel centre (0.51 × 1.67 scale)
+const TRACK_LIFT      = 0.022;  // elevation above terrain surface
 
 function WheelTracks({ roverRef }) {
   const meshRef  = useRef();
-  const headRef  = useRef(0);       // next slot in ring buffer
-  const totalRef = useRef(0);       // number of filled slots
+  const headRef  = useRef(0);
+  const totalRef = useRef(0);
   const lastPos  = useRef(null);
   const dummy    = useMemo(() => new THREE.Object3D(), []);
 
-  // Hide all instances on mount
+  // Initialise every slot as invisible (zero scale)
   useEffect(() => {
     if (!meshRef.current) return;
-    dummy.scale.set(0, 0, 0);
-    dummy.updateMatrix();
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
     for (let i = 0; i < MAX_TRACK_PAIRS * 2; i++) {
-      meshRef.current.setMatrixAt(i, dummy.matrix);
+      meshRef.current.setMatrixAt(i, zero);
     }
     meshRef.current.instanceMatrix.needsUpdate = true;
-    dummy.scale.set(1, 1, 1);
-  }, [dummy]);
+  }, []);
 
   useFrame(() => {
     if (!roverRef.current || !meshRef.current) return;
@@ -199,19 +197,19 @@ function WheelTracks({ roverRef }) {
     const dist = Math.sqrt(dx * dx + dz * dz);
     if (dist < TRACK_STEP) return;
 
-    // Forward direction from movement; right = perpendicular
     const fx = dx / dist, fz = dz / dist;
-    const rx = fz, rz = -fx;             // 90° clockwise = right vector
-    const headingY = Math.atan2(fx, fz); // for aligning the box along forward
+    const rx = fz, rz = -fx;               // right vector (perpendicular)
+    const headingY = Math.atan2(fx, fz);
 
     for (let side = 0; side < 2; side++) {
-      const sign = side === 0 ? -1 : 1;  // -1 = left, +1 = right
+      const sign = side === 0 ? -1 : 1;
       const wx = rpos.x + sign * rx * WHEEL_OFFSET;
       const wz = rpos.z + sign * rz * WHEEL_OFFSET;
-      const wy = getTerrainHeight(wx, wz) + TRACK_H * 0.5 + 0.003;
+      const wy = getTerrainHeight(wx, wz) + TRACK_LIFT;
 
+      dummy.scale.set(1, 1, 1);
       dummy.position.set(wx, wy, wz);
-      dummy.rotation.set(0, headingY, 0);
+      dummy.rotation.set(-Math.PI / 2, 0, headingY); // flat plane facing up
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(headRef.current * 2 + side, dummy.matrix);
     }
@@ -226,15 +224,22 @@ function WheelTracks({ roverRef }) {
   });
 
   return (
-    <instancedMesh ref={meshRef} args={[null, null, MAX_TRACK_PAIRS * 2]} count={0} receiveShadow>
-      <boxGeometry args={[TRACK_W, TRACK_H, TRACK_L]} />
-      <meshStandardMaterial
-        color="#18140c"
-        roughness={0.99}
-        metalness={0.0}
+    <instancedMesh
+      ref={meshRef}
+      args={[null, null, MAX_TRACK_PAIRS * 2]}
+      count={0}
+      frustumCulled={false}
+      renderOrder={2}
+    >
+      <planeGeometry args={[TRACK_W, TRACK_L]} />
+      <meshBasicMaterial
+        color="#14100a"
+        opacity={0.78}
         transparent
-        opacity={0.52}
         depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-4}
+        polygonOffsetUnits={-4}
       />
     </instancedMesh>
   );
