@@ -361,19 +361,24 @@ function SpaceDebris() {
 // ---- Route Lines ----
 function RouteLine({ points, color, active }) {
   if (!points || points.length < 2) return null;
-  const positions = new Float32Array(points.length * 3);
-  for (let i = 0; i < points.length; i++) {
-    positions[i*3]   = points[i][0];
-    positions[i*3+1] = points[i][1] + (active ? 0.14 : 0.08);
-    positions[i*3+2] = points[i][2];
-  }
+
+  const tubeRadius = active ? 0.18 : 0.09;   // 1.5× thicker than old 0.12/0.06
+  const lift       = active ? 0.14 : 0.08;
+
+  const curve = useMemo(() => {
+    const vecs = points.map(p => new THREE.Vector3(p[0], p[1] + lift, p[2]));
+    return new THREE.CatmullRomCurve3(vecs);
+  }, [points, lift]);
+
+  const geo = useMemo(() =>
+    new THREE.TubeGeometry(curve, Math.min(points.length * 2, 800), tubeRadius, 6, false),
+    [curve, tubeRadius]
+  );
+
   return (
-    <line>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" array={positions} count={points.length} itemSize={3} />
-      </bufferGeometry>
-      <lineBasicMaterial color={color} opacity={active ? 1.0 : 0.5} transparent />
-    </line>
+    <mesh geometry={geo}>
+      <meshBasicMaterial color={color} opacity={active ? 1.0 : 0.55} transparent />
+    </mesh>
   );
 }
 

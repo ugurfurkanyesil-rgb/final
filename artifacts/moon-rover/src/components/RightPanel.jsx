@@ -82,7 +82,7 @@ function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick })
           const {x,y}=w2m(pts[i][0],pts[i][2],vx,vy,zoom);
           i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
         }
-        ctx.strokeStyle=ROUTE_COLORS[mode]; ctx.lineWidth=active?2.4:0.9;
+        ctx.strokeStyle=ROUTE_COLORS[mode]; ctx.lineWidth=active?3.6:1.35;
         ctx.globalAlpha=active?1:0.35; ctx.stroke(); ctx.globalAlpha=1;
       }
     }
