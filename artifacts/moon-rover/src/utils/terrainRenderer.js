@@ -66,19 +66,19 @@ export function getTerrainCanvas(size = 256) {
       const slope  = sMap [row * GRID_RES + col];
       const hNorm  = (hC - hMin) / hRange; // 0..1
 
-      // --- Base luminance: lunar grey + hillshade ---
-      let v = 0.42                 // lunar albedo base
-            + diff * 0.44          // hillshade (stronger sun)
-            + hNorm * 0.10;        // subtle elevation tint
+      // --- Base luminance: bright lunar highland ---
+      let v = 0.54                 // bright highland base
+            + diff * 0.34          // hillshade
+            + hNorm * 0.08;        // elevation tint
 
       // Darken crater floors, brighten rims
-      if (crater > 0.5) v -= (crater - 0.5) * 0.30;
-      if (crater > 0.15 && crater < 0.45) v += 0.04; // rim highlight
+      if (crater > 0.5) v -= (crater - 0.5) * 0.36;
+      if (crater > 0.15 && crater < 0.45) v += 0.06; // rim highlight
 
       // Steep slopes slightly darker
-      if (slope > 0.25) v -= (slope - 0.25) * 0.10;
+      if (slope > 0.25) v -= (slope - 0.25) * 0.08;
 
-      v = Math.max(0.08, Math.min(0.95, v));
+      v = Math.max(0.14, Math.min(0.96, v));
 
       // Convert to RGB — very slight warm bias on lit faces, cool in shadow
       const bv = Math.round(v * 255);

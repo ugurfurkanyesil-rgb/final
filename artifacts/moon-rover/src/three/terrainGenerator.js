@@ -139,8 +139,8 @@ export function createLunarRegolithTexture(size = 512) {
       const ns = (Math.sin((x + y) * 0.14 + 1.9) * Math.cos((x - y) * 0.11 + 0.7)) * 0.12;
 
       const combined = n0 * 0.35 + n1 * 0.24 + n2 * 0.18 + n3 * 0.12 + n4 * 0.07 + n5 * 0.04 + ns * 0.10;
-      // Range 0–1 → pure neutral grey 100–168 — light highland (peynir kontrastı)
-      const v = Math.round(100 + combined * 68);
+      // Range 0–1 → pure neutral grey 118–192 — bright lunar highland
+      const v = Math.round(118 + combined * 74);
       d[i]   = v;
       d[i+1] = v;   // neutral grey: R = G = B
       d[i+2] = v;
@@ -241,9 +241,9 @@ export function generateTerrain() {
       Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.010 +
       Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.005;
 
-    // Composite luminance — lighter base 0.52, wide range for cheese contrast
-    const lum = Math.max(0.22, Math.min(0.74,
-      0.520
+    // Composite luminance — bright lunar highland base 0.62
+    const lum = Math.max(0.24, Math.min(0.88,
+      0.620
       - slope  * 0.090  // steep walls darker
       + cbias            // crater dark/bright: ±42%
       + macro            // large patches: ±11%
