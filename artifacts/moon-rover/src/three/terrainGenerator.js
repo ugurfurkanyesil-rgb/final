@@ -100,16 +100,15 @@ function craterColourBias(wx, wz) {
     const dx = wx - c.x, dz = wz - c.z;
     const t  = Math.sqrt(dx * dx + dz * dz) / c.radius;
     if (t < 1.0) {
-      // Interior: darker (compressed, less space-weathered = actually brighter on the real Moon,
-      // but visually we darken for depth perception)
-      bias -= (1.0 - t) * 0.22 * Math.min(1, c.depth / 4);
+      // Interior: clearly darker — gives the "cheese hole" look
+      bias -= (1.0 - t) * 0.38 * Math.min(1, c.depth / 3.5);
     } else if (t < 1.0 + c.rimW * 3) {
-      // Rim: brighter fresh ejecta
+      // Rim: noticeably brighter fresh ejecta
       const rf = 1 - (t - 1.0) / (c.rimW * 3);
-      bias += rf * 0.20 * Math.min(1, c.rimH / 1.5);
+      bias += rf * 0.28 * Math.min(1, c.rimH / 1.2);
     }
   }
-  return Math.max(-0.30, Math.min(0.30, bias));
+  return Math.max(-0.42, Math.min(0.42, bias));
 }
 
 // ─── Canvas texture factories ────────────────────────────────────────────────
@@ -140,8 +139,8 @@ export function createLunarRegolithTexture(size = 512) {
       const ns = (Math.sin((x + y) * 0.14 + 1.9) * Math.cos((x - y) * 0.11 + 0.7)) * 0.12;
 
       const combined = n0 * 0.35 + n1 * 0.24 + n2 * 0.18 + n3 * 0.12 + n4 * 0.07 + n5 * 0.04 + ns * 0.10;
-      // Range 0–1 → pure neutral grey 88–148 — medium highland grey (no warm tint)
-      const v = Math.round(88 + combined * 60);
+      // Range 0–1 → pure neutral grey 100–168 — light highland (peynir kontrastı)
+      const v = Math.round(100 + combined * 68);
       d[i]   = v;
       d[i+1] = v;   // neutral grey: R = G = B
       d[i+2] = v;
@@ -229,25 +228,26 @@ export function generateTerrain() {
     // Crater albedo: darker interior, slightly brighter fresh rim
     const cbias = craterColourBias(wx, wz);
 
-    // ── Large-scale albedo variation (gentle — no deep dark maria) ───────
+    // ── Large-scale patchwork (gives varied bright/dark zones across terrain) ─
     const macro =
-      Math.sin(wx * 0.060 + 1.8) * Math.cos(wz * 0.055 + 0.4) * 0.022 +
-      Math.sin(wx * 0.130 + 3.2) * Math.cos(wz * 0.120 + 2.7) * 0.014 +
-      Math.sin(wx * 0.270 + 0.6) * Math.cos(wz * 0.250 + 4.1) * 0.008;
+      Math.sin(wx * 0.055 + 1.8) * Math.cos(wz * 0.050 + 0.4) * 0.045 +
+      Math.sin(wx * 0.120 + 3.2) * Math.cos(wz * 0.110 + 2.7) * 0.030 +
+      Math.sin(wx * 0.250 + 0.6) * Math.cos(wz * 0.230 + 4.1) * 0.018 +
+      Math.sin((wx - wz) * 0.080 + 2.0) * 0.014;
 
-    // ── Fine grain noise ──────────────────────────────────────────────────
+    // ── Fine grain for micro-texture variation ────────────────────────────
     const grain =
-      Math.sin(wx * 1.80 + 0.9) * Math.cos(wz * 1.65 + 3.4) * 0.012 +
-      Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.007 +
-      Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.003;
+      Math.sin(wx * 1.80 + 0.9) * Math.cos(wz * 1.65 + 3.4) * 0.018 +
+      Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.010 +
+      Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.005;
 
-    // Composite luminance — base 0.470 (medium grey highland, not too dark)
-    const lum = Math.max(0.20, Math.min(0.68,
-      0.470
-      - slope  * 0.085  // steep walls darker
-      + cbias            // crater interior/rim: ±22%
-      + macro            // gentle large-scale variation: ±4%
-      + grain            // micro grain: ±2%
+    // Composite luminance — lighter base 0.52, wide range for cheese contrast
+    const lum = Math.max(0.22, Math.min(0.74,
+      0.520
+      - slope  * 0.090  // steep walls darker
+      + cbias            // crater dark/bright: ±42%
+      + macro            // large patches: ±11%
+      + grain            // micro grain: ±3%
     ));
 
     // Pure neutral grey — R = G = B (no warm tint, matches reference photo)
