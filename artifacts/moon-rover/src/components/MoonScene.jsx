@@ -42,7 +42,7 @@ function RoverSTL({ wireframe }) {
   const geo = useMemo(() => {
     const g = rawGeo.clone();
 
-    // 1. Bake Z-up→Y-up rotation into geometry (STL is Z-up, Three.js is Y-up)
+    // 1. Bake Z-up→Y-up rotation into geometry
     g.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
 
     // 2. Scale to fit ~1.4 units max dimension
@@ -53,10 +53,49 @@ function RoverSTL({ wireframe }) {
     const s = 1.4 / maxDim;
     g.scale(s, s, s);
 
-    // 3. Bottom-align: move so Y=0 is at the lowest point (wheel contact plane)
-    //    This way placing the rover at terrain_y puts wheels exactly on ground
+    // 3. Bottom-align
     g.computeBoundingBox();
     g.translate(0, -g.boundingBox.min.y, 0);
+
+    // 4. Vertex colors based on height zones
+    //    bottom=wheels (dark charcoal), lower-mid=chassis (Turkish red),
+    //    upper-mid=body (silver-white), top=panels (cobalt blue)
+    g.computeBoundingBox();
+    const yMin = g.boundingBox.min.y;
+    const yMax = g.boundingBox.max.y;
+    const yRange = yMax - yMin;
+
+    const pos = g.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const c = new THREE.Color();
+
+    const ZONES = [
+      { t: 0.00, hex: '#1a1a1a' }, // wheels — near black
+      { t: 0.18, hex: '#e02020' }, // lower chassis — Turkish red
+      { t: 0.42, hex: '#cc2020' }, // mid chassis — deeper red
+      { t: 0.60, hex: '#d8d8cc' }, // body — warm silver
+      { t: 0.80, hex: '#1c3aaa' }, // upper body — cobalt blue (solar panels)
+      { t: 1.00, hex: '#ffffff' }, // very top — white highlight
+    ];
+
+    for (let i = 0; i < pos.count; i++) {
+      const t = (pos.getY(i) - yMin) / yRange;
+      // find bracketing zone pair
+      let lo = ZONES[0], hi = ZONES[ZONES.length - 1];
+      for (let z = 0; z < ZONES.length - 1; z++) {
+        if (t >= ZONES[z].t && t <= ZONES[z + 1].t) {
+          lo = ZONES[z]; hi = ZONES[z + 1]; break;
+        }
+      }
+      const alpha = lo.t === hi.t ? 0 : (t - lo.t) / (hi.t - lo.t);
+      const cLo = new THREE.Color(lo.hex);
+      const cHi = new THREE.Color(hi.hex);
+      c.copy(cLo).lerp(cHi, alpha);
+      colors[i * 3]     = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     g.computeVertexNormals();
     return g;
@@ -65,9 +104,9 @@ function RoverSTL({ wireframe }) {
   return (
     <mesh geometry={geo} castShadow receiveShadow>
       <meshStandardMaterial
-        color="#9a9a8a"
-        roughness={0.65}
-        metalness={0.40}
+        vertexColors
+        roughness={0.55}
+        metalness={0.45}
         wireframe={wireframe}
         side={THREE.DoubleSide}
       />
