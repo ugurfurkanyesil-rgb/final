@@ -112,6 +112,95 @@ function craterColourBias(wx, wz) {
   return Math.max(-0.30, Math.min(0.30, bias));
 }
 
+// ─── Canvas texture factories ────────────────────────────────────────────────
+/**
+ * Procedural lunar regolith colour texture.
+ * Multi-frequency sin/cos grain — matches LRO LROC NAC surface appearance.
+ * Tiled 16× across the terrain (each tile ≈ 6.25 m).
+ */
+export function createLunarRegolithTexture(size = 512) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx  = canvas.getContext('2d');
+  const img  = ctx.createImageData(size, size);
+  const d    = img.data;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+
+      // 6 octaves of sin-based value noise
+      const n0 = (Math.sin(x * 0.09 + 1.1)  * Math.cos(y * 0.08 + 2.3))  * 0.42 + 0.50;
+      const n1 = (Math.sin(x * 0.23 + 3.7)  * Math.cos(y * 0.26 + 0.9))  * 0.26 + 0.50;
+      const n2 = (Math.sin(x * 0.55 + 5.2)  * Math.cos(y * 0.51 + 4.4))  * 0.16 + 0.50;
+      const n3 = (Math.sin(x * 1.10 + 2.8)  * Math.cos(y * 1.05 + 1.6))  * 0.09 + 0.50;
+      const n4 = (Math.sin(x * 2.20 + 0.5)  * Math.cos(y * 2.35 + 3.2))  * 0.05 + 0.50;
+      const n5 = (Math.sin(x * 4.60 + 4.1)  * Math.cos(y * 4.15 + 5.8))  * 0.02 + 0.50;
+      // diagonal swirl for regolith streaks
+      const ns = (Math.sin((x + y) * 0.14 + 1.9) * Math.cos((x - y) * 0.11 + 0.7)) * 0.12;
+
+      const combined = n0 * 0.35 + n1 * 0.24 + n2 * 0.18 + n3 * 0.12 + n4 * 0.07 + n5 * 0.04 + ns * 0.10;
+      // Range 0–1 → display grey 92–148 (matches LRO albedo 0.10–0.19 display-mapped)
+      const v = Math.round(92 + combined * 56);
+      d[i]   = v;
+      d[i+1] = Math.round(v * 0.974);   // slight warm tint (R > G > B)
+      d[i+2] = Math.round(v * 0.935);
+      d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(16, 16);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/**
+ * Procedural micro-normal map for regolith grain bumps.
+ * Tiled 32× for very fine surface irregularity.
+ */
+export function createLunarNormalMap(size = 256) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  const d   = img.data;
+
+  // Sample height at each pixel, finite-difference for normal
+  const H = (x, y) =>
+    Math.sin(x * 0.48 + 1.1) * Math.cos(y * 0.45 + 2.2) * 0.60 +
+    Math.sin(x * 1.20 + 3.5) * Math.cos(y * 1.15 + 0.7) * 0.28 +
+    Math.sin(x * 2.60 + 0.8) * Math.cos(y * 2.50 + 4.3) * 0.12;
+
+  const eps = 1.0;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i  = (y * size + x) * 4;
+      const hL = H(x - eps, y), hR = H(x + eps, y);
+      const hD = H(x, y - eps), hU = H(x, y + eps);
+      // Normal in tangent space: normalize([-dX, -dZ, strength])
+      const strength = 18.0;
+      const nx = (hL - hR);
+      const nz = (hD - hU);
+      const len = Math.sqrt(nx * nx + nz * nz + 1 / (strength * strength));
+      // Pack to 0–255 (128 = 0, tangent-space normal map encoding)
+      d[i]   = Math.round(128 + (nx / len) * 127);  // R = X
+      d[i+1] = Math.round(128 + (nz / len) * 127);  // G = Y
+      d[i+2] = 255;                                   // B = Z (up)
+      d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(32, 32);
+  tex.anisotropy = 8;
+  return tex;
+}
+
 // ─── Geometry builder ────────────────────────────────────────────────────────
 export function generateTerrain() {
   const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, GRID_RES - 1, GRID_RES - 1);
@@ -124,39 +213,49 @@ export function generateTerrain() {
   }
   geo.computeVertexNormals();
 
-  // 2. Vertex colours — NASA-realistic lunar grey
-  //    Apollo/LRO imagery: regolith grey with slight warm undertone
-  //    Base albedo range 0.38–0.70 (display-space, not physical)
+  // 2. Vertex colours — LRO/Apollo-calibrated lunar grey
+  //    Physical albedo ~0.10–0.19 → display-mapped to ~0.36–0.60 range
+  //    (gamma-corrected sRGB, viewed at typical monitor brightness)
   const normals = geo.attributes.normal;
   const colors  = new Float32Array(pos.count * 3);
 
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i), wz = pos.getZ(i);
 
-    // Slope darkening: flatter surface = more directly lit
-    const ny    = Math.abs(normals.getY(i));           // 1 = flat, 0 = vertical
-    const slope = 1.0 - ny;                            // 0 = flat, 1 = steep
+    // Slope shading (steep faces are noticeably darker — self-shadowing)
+    const ny    = Math.abs(normals.getY(i));   // 1 = flat, 0 = vertical wall
+    const slope = 1.0 - ny;
 
-    // Crater colour bias
+    // Crater albedo bias: interiors darker, rims brighter
     const cbias = craterColourBias(wx, wz);
 
-    // Micro-noise for regolith grain texture
-    const grain = (Math.sin(wx * 2.10 + 0.5) * Math.cos(wz * 1.87 + 1.3) * 0.025
-                 + Math.sin(wx * 3.80 + 2.2) * Math.cos(wz * 4.10 + 3.7) * 0.012);
+    // 4-octave large-scale albedo variation (mare/highland patchwork)
+    const macro =
+      Math.sin(wx * 0.055 + 1.8) * Math.cos(wz * 0.062 + 0.4) * 0.035 +
+      Math.sin(wx * 0.130 + 3.2) * Math.cos(wz * 0.115 + 2.7) * 0.020 +
+      Math.sin(wx * 0.280 + 0.6) * Math.cos(wz * 0.255 + 4.1) * 0.012 +
+      Math.sin(wx * 0.550 + 5.0) * Math.cos(wz * 0.510 + 1.5) * 0.008;
 
-    // Base luminance: mid grey (~0.545), pulled darker on slopes
-    const lum = Math.max(0.28, Math.min(0.76,
-      0.545
-      - slope * 0.065
-      + cbias
-      + grain
+    // Fine grain noise (gives per-vertex powder texture variation)
+    const grain =
+      Math.sin(wx * 1.80 + 0.9) * Math.cos(wz * 1.65 + 3.4) * 0.016 +
+      Math.sin(wx * 3.50 + 2.5) * Math.cos(wz * 3.80 + 0.8) * 0.009 +
+      Math.sin(wx * 7.00 + 4.8) * Math.cos(wz * 6.90 + 5.2) * 0.004;
+
+    // Composite luminance:
+    //   Base 0.420 = average display-grey matching LRO albedo survey
+    const lum = Math.max(0.24, Math.min(0.62,
+      0.420
+      - slope * 0.080   // steep walls: -8%
+      + cbias            // crater interior/rim: ±20%
+      + macro            // large-scale variation: ±5%
+      + grain            // micro grain: ±3%
     ));
 
-    // Lunar regolith slight warm-grey tint (R slightly > G > B)
-    // From Apollo soil spectral data: roughly R/G/B ≈ 1.00 / 0.975 / 0.930
-    colors[i * 3]     = lum * 1.000;   // R
-    colors[i * 3 + 1] = lum * 0.972;   // G
-    colors[i * 3 + 2] = lum * 0.928;   // B — very slightly cooler = natural grey
+    // Apollo soil spectroscopy tint: R:G:B ≈ 1.000 : 0.972 : 0.928
+    colors[i * 3]     = lum * 1.000;
+    colors[i * 3 + 1] = lum * 0.972;
+    colors[i * 3 + 2] = lum * 0.928;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   return geo;

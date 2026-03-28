@@ -10,24 +10,40 @@ import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   generateTerrain, getTerrainHeight, generateRockPositions,
-  generateDebrisPositions, TERRAIN_SIZE
+  generateDebrisPositions, TERRAIN_SIZE,
+  createLunarRegolithTexture, createLunarNormalMap,
 } from '../three/terrainGenerator';
 import { useRoverController } from '../three/roverController';
 import { ROUTE_COLORS } from '../utils/constants';
 
 // ---- Terrain ----
 let _geo = null;
+// Textures created once at module level so they survive HMR re-renders
+let _regolithTex = null;
+let _normalMap   = null;
+
 function Terrain({ wireframe }) {
-  if (!_geo) _geo = generateTerrain();
+  if (!_geo)          _geo          = generateTerrain();
+  if (!_regolithTex)  _regolithTex  = createLunarRegolithTexture(512);
+  if (!_normalMap)    _normalMap    = createLunarNormalMap(256);
+
   return (
     <mesh geometry={_geo} receiveShadow>
-      <meshStandardMaterial
-        vertexColors={!wireframe}
-        color={wireframe ? '#44aa44' : '#ffffff'}
-        wireframe={wireframe}
-        roughness={0.97}
-        metalness={0.00}
-      />
+      {wireframe ? (
+        <meshStandardMaterial wireframe color="#44aa44" />
+      ) : (
+        <meshStandardMaterial
+          vertexColors
+          /* Regolith grain detail texture — multiplied on top of vertex colours */
+          map={_regolithTex}
+          /* Micro-normal map for sub-pixel grain bumps */
+          normalMap={_normalMap}
+          normalScale={[0.22, 0.22]}
+          roughness={0.98}
+          metalness={0.00}
+          envMapIntensity={0.0}
+        />
+      )}
     </mesh>
   );
 }
