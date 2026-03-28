@@ -162,12 +162,15 @@ function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningM
 }
 
 // ---- Wheel Tracks ----
-const MAX_TRACK_PAIRS = 800;
-const TRACK_STEP      = 0.16;   // dense placement — fires every ~16 cm of travel
-const TRACK_W         = 0.19;   // visible track width (wheel width + margin)
-const TRACK_L         = 0.28;   // segment length (slightly overlapping)
-const WHEEL_OFFSET    = 0.852;  // rover center → wheel centre (0.51 × 1.67 scale)
-const TRACK_LIFT      = 0.022;  // elevation above terrain surface
+const MAX_TRACK_PAIRS = 600;
+const TRACK_STEP      = 0.34;   // > TRACK_L → gap between marks = dashed look
+const TRACK_W         = 0.17;
+const TRACK_L         = 0.17;   // segment length (gap = TRACK_STEP - TRACK_L = 0.17 m)
+const WHEEL_OFFSET    = 0.852;
+const TRACK_LIFT      = 0.022;
+const TRACK_LIFE_MS   = 2000;   // marks disappear 2 s after placement
+
+const _ZERO_MTX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 function WheelTracks({ roverRef }) {
   const meshRef  = useRef();
@@ -175,66 +178,79 @@ function WheelTracks({ roverRef }) {
   const totalRef = useRef(0);
   const lastPos  = useRef(null);
   const dummy    = useMemo(() => new THREE.Object3D(), []);
+  const timesRef = useRef(new Float64Array(MAX_TRACK_PAIRS).fill(0));
 
-  // Initialise every slot as invisible (zero scale)
+  // Hide all slots on mount
   useEffect(() => {
     if (!meshRef.current) return;
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
     for (let i = 0; i < MAX_TRACK_PAIRS * 2; i++) {
-      meshRef.current.setMatrixAt(i, zero);
+      meshRef.current.setMatrixAt(i, _ZERO_MTX);
     }
     meshRef.current.instanceMatrix.needsUpdate = true;
   }, []);
 
   useFrame(() => {
     if (!roverRef.current || !meshRef.current) return;
+    const now  = performance.now();
     const rpos = roverRef.current.position;
+    let   dirty = false;
 
-    if (!lastPos.current) { lastPos.current = rpos.clone(); return; }
-
-    const dx = rpos.x - lastPos.current.x;
-    const dz = rpos.z - lastPos.current.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist < TRACK_STEP) return;
-
-    const fx = dx / dist, fz = dz / dist;
-    const rx = fz, rz = -fx;               // right vector (perpendicular)
-    const headingY = Math.atan2(fx, fz);
-
-    for (let side = 0; side < 2; side++) {
-      const sign = side === 0 ? -1 : 1;
-      const wx = rpos.x + sign * rx * WHEEL_OFFSET;
-      const wz = rpos.z + sign * rz * WHEEL_OFFSET;
-      const wy = getTerrainHeight(wx, wz) + TRACK_LIFT;
-
-      dummy.scale.set(1, 1, 1);
-      dummy.position.set(wx, wy, wz);
-      dummy.rotation.set(-Math.PI / 2, 0, headingY); // flat plane facing up
-      dummy.updateMatrix();
-      meshRef.current.setMatrixAt(headRef.current * 2 + side, dummy.matrix);
+    // ---- Expire old marks ----
+    for (let i = 0; i < totalRef.current; i++) {
+      if (timesRef.current[i] > 0 && now - timesRef.current[i] > TRACK_LIFE_MS) {
+        meshRef.current.setMatrixAt(i * 2,     _ZERO_MTX);
+        meshRef.current.setMatrixAt(i * 2 + 1, _ZERO_MTX);
+        timesRef.current[i] = 0;
+        dirty = true;
+      }
     }
-    meshRef.current.instanceMatrix.needsUpdate = true;
 
-    lastPos.current.copy(rpos);
-    headRef.current = (headRef.current + 1) % MAX_TRACK_PAIRS;
-    if (totalRef.current < MAX_TRACK_PAIRS) {
-      totalRef.current++;
-      meshRef.current.count = totalRef.current * 2;
+    // ---- Place new mark ----
+    if (!lastPos.current) {
+      lastPos.current = rpos.clone();
+    } else {
+      const dx   = rpos.x - lastPos.current.x;
+      const dz   = rpos.z - lastPos.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist >= TRACK_STEP) {
+        const fx = dx / dist, fz = dz / dist;
+        const rx = fz, rz = -fx;
+        const headingY = Math.atan2(fx, fz);
+
+        for (let side = 0; side < 2; side++) {
+          const sign = side === 0 ? -1 : 1;
+          const wx = rpos.x + sign * rx * WHEEL_OFFSET;
+          const wz = rpos.z + sign * rz * WHEEL_OFFSET;
+          const wy = getTerrainHeight(wx, wz) + TRACK_LIFT;
+          dummy.scale.set(1, 1, 1);
+          dummy.position.set(wx, wy, wz);
+          dummy.rotation.set(-Math.PI / 2, 0, headingY);
+          dummy.updateMatrix();
+          meshRef.current.setMatrixAt(headRef.current * 2 + side, dummy.matrix);
+        }
+        timesRef.current[headRef.current] = now;
+        lastPos.current.copy(rpos);
+        headRef.current = (headRef.current + 1) % MAX_TRACK_PAIRS;
+        if (totalRef.current < MAX_TRACK_PAIRS) totalRef.current++;
+        dirty = true;
+      }
     }
+
+    if (dirty) meshRef.current.instanceMatrix.needsUpdate = true;
   });
 
   return (
     <instancedMesh
       ref={meshRef}
       args={[null, null, MAX_TRACK_PAIRS * 2]}
-      count={0}
+      count={MAX_TRACK_PAIRS * 2}
       frustumCulled={false}
       renderOrder={2}
     >
       <planeGeometry args={[TRACK_W, TRACK_L]} />
       <meshBasicMaterial
-        color="#14100a"
-        opacity={0.78}
+        color="#3a3328"
+        opacity={0.62}
         transparent
         depthWrite={false}
         polygonOffset
