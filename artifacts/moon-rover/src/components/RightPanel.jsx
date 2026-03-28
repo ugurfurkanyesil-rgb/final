@@ -15,7 +15,7 @@ import { generateHeatmapCanvas } from '../utils/heatmaps';
 
 const HALF = TERRAIN_SIZE / 2;
 const PW   = 218;  // panel width
-const MAP_S = 200; // mini-map px
+const MAP_S = 202; // mini-map px — fills panel width (218 - 8px×2 padding)
 
 const HEATMAP_OPTIONS = ['Slope','Slope Angle','Roughness','Slip Risk','Illumination','Hazard Score','Traversability'];
 const HM_COLORS = {
@@ -413,18 +413,13 @@ export default function RightPanel({
 
       <div style={{flex:1,padding:'6px 8px',display:'flex',flexDirection:'column',gap:8,overflowY:'auto'}}>
 
-        {/* Terrain */}
-        <Sect label="Terrain Mode">
-          <Row>
-            <Btn active={!wireframe} onClick={()=>setWireframe(false)}>PROCEDURAL</Btn>
-            <Btn active={wireframe}  onClick={()=>setWireframe(true)}>WIRE</Btn>
-          </Row>
-        </Sect>
-
-        {/* Mini-map */}
-        <Sect label="Topographic Map">
-          <div style={{fontSize:7,color:'#3a663a',marginBottom:4}}>
-            Scroll=zoom · Drag=pan · Pick mode=click map
+        {/* ── Topographic Map — first thing the user sees ── */}
+        <div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
+            <Label>TOPOGRAPHIC MAP</Label>
+            <span style={{fontSize:7,color:'#4a884a'}}>
+              {pickMode ? '▶ CLICK TO PLACE WP' : 'SCROLL=ZOOM · DRAG=PAN'}
+            </span>
           </div>
           <MiniMap
             waypoints={waypoints}
@@ -442,6 +437,15 @@ export default function RightPanel({
               E: {endPos&&waypoints.length>1?`${endPos.x.toFixed(0)},${endPos.z.toFixed(0)}`:'--'}
             </span>
           </div>
+          <div style={{height:1,background:'rgba(30,70,30,0.2)',marginTop:8}}/>
+        </div>
+
+        {/* Terrain */}
+        <Sect label="Terrain Mode">
+          <Row>
+            <Btn active={!wireframe} onClick={()=>setWireframe(false)}>PROCEDURAL</Btn>
+            <Btn active={wireframe}  onClick={()=>setWireframe(true)}>WIRE</Btn>
+          </Row>
         </Sect>
 
         {/* Waypoints */}
