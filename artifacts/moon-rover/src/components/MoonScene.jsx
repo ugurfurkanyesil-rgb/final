@@ -41,21 +41,29 @@ function RoverSTL({ wireframe }) {
 
   const geo = useMemo(() => {
     const g = rawGeo.clone();
-    g.center();
+
+    // 1. Bake Z-up→Y-up rotation into geometry (STL is Z-up, Three.js is Y-up)
+    g.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+
+    // 2. Scale to fit ~1.4 units max dimension
     g.computeBoundingBox();
     const size = new THREE.Vector3();
     g.boundingBox.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z);
-    // Normalize to fit in ~1.4 world units (RoverPhysics applies 1.67× on top)
     const s = 1.4 / maxDim;
     g.scale(s, s, s);
+
+    // 3. Bottom-align: move so Y=0 is at the lowest point (wheel contact plane)
+    //    This way placing the rover at terrain_y puts wheels exactly on ground
+    g.computeBoundingBox();
+    g.translate(0, -g.boundingBox.min.y, 0);
+
     g.computeVertexNormals();
     return g;
   }, [rawGeo]);
 
-  // STL files are typically Z-up; Three.js is Y-up → rotate -90° on X
   return (
-    <mesh geometry={geo} castShadow receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh geometry={geo} castShadow receiveShadow>
       <meshStandardMaterial
         color="#9a9a8a"
         roughness={0.65}
