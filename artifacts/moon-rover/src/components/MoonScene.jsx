@@ -4,10 +4,9 @@
  * Full touchpad / mouse / scroll controls.
  */
 
-import { useRef, useEffect, useMemo, Suspense } from 'react';
-import { Canvas, useFrame, useLoader } from '@react-three/fiber';
-import { OrbitControls, Stars, useTexture } from '@react-three/drei';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import { useRef, useEffect, useMemo } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   generateTerrain, getTerrainHeight, generateRockPositions,
@@ -33,176 +32,99 @@ function Terrain({ wireframe }) {
   );
 }
 
-// ---- STL Rover ----
-const STL_URL = `${import.meta.env.BASE_URL}rover.stl`;
-
-function RoverSTL({ wireframe }) {
-  const rawGeo = useLoader(STLLoader, STL_URL);
-
-  const geo = useMemo(() => {
-    const g = rawGeo.clone();
-
-    // 1. Bake Z-up→Y-up rotation into geometry
-    g.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
-
-    // 2. Scale to fit ~1.4 units max dimension
-    g.computeBoundingBox();
-    const size = new THREE.Vector3();
-    g.boundingBox.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const s = 1.4 / maxDim;
-    g.scale(s, s, s);
-
-    // 3. Bottom-align
-    g.computeBoundingBox();
-    g.translate(0, -g.boundingBox.min.y, 0);
-
-    // 4. Vertex colors based on height zones
-    //    bottom=wheels (dark charcoal), lower-mid=chassis (Turkish red),
-    //    upper-mid=body (silver-white), top=panels (cobalt blue)
-    g.computeBoundingBox();
-    const yMin = g.boundingBox.min.y;
-    const yMax = g.boundingBox.max.y;
-    const yRange = yMax - yMin;
-
-    const pos = g.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const c = new THREE.Color();
-
-    // Wheels zone ≈ bottom 20%; rest is bronze body
-    const ZONES = [
-      { t: 0.00, hex: '#111111' }, // wheels — near black
-      { t: 0.18, hex: '#1a1a1a' }, // wheel top edge — near black
-      { t: 0.22, hex: '#6b3a1f' }, // transition to bronze
-      { t: 0.40, hex: '#b87333' }, // classic bronze
-      { t: 0.65, hex: '#cd9b50' }, // lighter bronze highlight
-      { t: 0.85, hex: '#b87333' }, // back to bronze
-      { t: 1.00, hex: '#8b5c20' }, // dark bronze top
-    ];
-
-    for (let i = 0; i < pos.count; i++) {
-      const t = (pos.getY(i) - yMin) / yRange;
-      // find bracketing zone pair
-      let lo = ZONES[0], hi = ZONES[ZONES.length - 1];
-      for (let z = 0; z < ZONES.length - 1; z++) {
-        if (t >= ZONES[z].t && t <= ZONES[z + 1].t) {
-          lo = ZONES[z]; hi = ZONES[z + 1]; break;
-        }
-      }
-      const alpha = lo.t === hi.t ? 0 : (t - lo.t) / (hi.t - lo.t);
-      const cLo = new THREE.Color(lo.hex);
-      const cHi = new THREE.Color(hi.hex);
-      c.copy(cLo).lerp(cHi, alpha);
-      colors[i * 3]     = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    g.computeVertexNormals();
-    return g;
-  }, [rawGeo]);
-
-  return (
-    <mesh geometry={geo} castShadow receiveShadow>
-      <meshStandardMaterial
-        vertexColors
-        roughness={0.55}
-        metalness={0.45}
-        wireframe={wireframe}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
-  );
-}
-
+// ---- Detailed Procedural Rover ----
 function RoverBody({ wireframe }) {
+  const wMat = <meshStandardMaterial color="#1a1a10" roughness={0.95} metalness={0.05} wireframe={wireframe} />;
+  const bodyMat = <meshStandardMaterial color="#8a8a7a" roughness={0.72} metalness={0.32} wireframe={wireframe} />;
+  const panelMat = <meshStandardMaterial color="#1c2e88" roughness={0.22} metalness={0.75} wireframe={wireframe} />;
+  const silverMat = <meshStandardMaterial color="#b4b4a0" roughness={0.55} metalness={0.55} wireframe={wireframe} />;
+  const rtgMat = <meshStandardMaterial color="#6a6a58" roughness={0.80} metalness={0.40} wireframe={wireframe} />;
+
   return (
-    <Suspense fallback={null}>
-      <RoverSTL wireframe={wireframe} />
-    </Suspense>
-  );
-}
-
-// ---- Turkish Flag Texture (canvas-drawn) ----
-function makeTurkishFlagTexture() {
-  const W = 300, H = 200;
-  const canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext('2d');
-
-  // Red background
-  ctx.fillStyle = '#E30A17';
-  ctx.fillRect(0, 0, W, H);
-
-  // White crescent
-  const cx = W * 0.38, cy = H * 0.5, r1 = H * 0.30;
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(cx, cy, r1, 0, Math.PI * 2);
-  ctx.fill();
-  // Inner red circle to carve crescent
-  ctx.fillStyle = '#E30A17';
-  ctx.beginPath();
-  ctx.arc(cx + r1 * 0.32, cy, r1 * 0.78, 0, Math.PI * 2);
-  ctx.fill();
-
-  // White star (5-pointed)
-  const sx = cx + r1 * 1.0, sy = cy;
-  const sr = H * 0.12;
-  ctx.fillStyle = '#ffffff';
-  ctx.save();
-  ctx.translate(sx, sy);
-  ctx.rotate(-Math.PI / 2);
-  ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    const angle = (i * 4 * Math.PI) / 5;
-    const x = sr * Math.cos(angle), y = sr * Math.sin(angle);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-
-  return new THREE.CanvasTexture(canvas);
-}
-
-const PERIAPSIS_FLAG_URL = `${import.meta.env.BASE_URL}periapsis_flag.png`;
-
-function TurkishFlag({ position }) {
-  const tex = useMemo(() => makeTurkishFlagTexture(), []);
-  const FW = 0.55, FH = 0.37;
-  return (
-    <group position={position}>
-      {/* Pole */}
-      <mesh position={[0, 0.40, 0]}>
-        <cylinderGeometry args={[0.012, 0.012, 0.80, 6]} />
-        <meshStandardMaterial color="#aaaaaa" metalness={0.7} roughness={0.3} />
+    <group>
+      {/* Chassis */}
+      <mesh position={[0, 0.21, 0]} castShadow>{bodyMat}
+        <boxGeometry args={[0.88, 0.20, 1.28]} />
       </mesh>
-      {/* Flag plane */}
-      <mesh position={[FW / 2, 0.72, 0]}>
-        <planeGeometry args={[FW, FH]} />
-        <meshStandardMaterial map={tex} side={THREE.DoubleSide} />
+      {/* Electronics bay */}
+      <mesh position={[0, 0.43, 0.06]} castShadow>{bodyMat}
+        <boxGeometry args={[0.60, 0.17, 0.82]} />
       </mesh>
-    </group>
-  );
-}
-
-function PeriapsisFlag({ position }) {
-  const tex = useTexture(PERIAPSIS_FLAG_URL);
-  const FW = 0.55, FH = 0.37;
-  return (
-    <group position={position}>
-      {/* Pole */}
-      <mesh position={[0, 0.40, 0]}>
-        <cylinderGeometry args={[0.012, 0.012, 0.80, 6]} />
-        <meshStandardMaterial color="#aaaaaa" metalness={0.7} roughness={0.3} />
+      {/* Top equipment box */}
+      <mesh position={[0, 0.56, -0.05]} castShadow>
+        <meshStandardMaterial color="#9e9e8c" roughness={0.65} metalness={0.35} wireframe={wireframe} />
+        <boxGeometry args={[0.40, 0.12, 0.55]} />
       </mesh>
-      {/* Flag plane — dark bg matches the logo */}
-      <mesh position={[FW / 2, 0.72, 0]}>
-        <planeGeometry args={[FW, FH]} />
-        <meshStandardMaterial map={tex} side={THREE.DoubleSide} />
+      {/* RTG rear */}
+      <mesh position={[0, 0.28, -0.65]} rotation={[Math.PI/2,0,0]} castShadow>{rtgMat}
+        <cylinderGeometry args={[0.11, 0.11, 0.46, 8]} />
       </mesh>
+      {/* RTG fins */}
+      {[0,1,2,3].map(i => (
+        <mesh key={i} position={[0, 0.28, -0.65]} rotation={[Math.PI/2, i*Math.PI/4, 0]} castShadow>
+          <meshStandardMaterial color="#555544" roughness={0.9} metalness={0.2} />
+          <boxGeometry args={[0.22, 0.025, 0.44]} />
+        </mesh>
+      ))}
+      {/* Solar panels */}
+      <mesh position={[-0.70, 0.51, 0.06]} castShadow>{panelMat}
+        <boxGeometry args={[0.48, 0.022, 0.76]} />
+      </mesh>
+      <mesh position={[0.70, 0.51, 0.06]} castShadow>{panelMat}
+        <boxGeometry args={[0.48, 0.022, 0.76]} />
+      </mesh>
+      {/* Panel grid lines */}
+      {[-1,1].map(side => [0,1,2].map(j => (
+        <mesh key={`${side}-${j}`} position={[side*0.70, 0.525, -0.18 + j*0.18]}>
+          <boxGeometry args={[0.48, 0.006, 0.006]} />
+          <meshStandardMaterial color="#0a1555" />
+        </mesh>
+      )))}
+      {/* Camera mast */}
+      <mesh position={[0, 0.79, 0.35]} castShadow>{silverMat}
+        <cylinderGeometry args={[0.022, 0.026, 0.42, 7]} />
+      </mesh>
+      {/* Camera head */}
+      <mesh position={[0, 1.01, 0.35]} castShadow>
+        <meshStandardMaterial color="#1a1a1a" roughness={0.5} metalness={0.6} wireframe={wireframe} />
+        <boxGeometry args={[0.17, 0.12, 0.10]} />
+      </mesh>
+      {/* Camera lens */}
+      <mesh position={[0, 1.01, 0.41]}>
+        <cylinderGeometry args={[0.03, 0.03, 0.02, 8]} />
+        <meshStandardMaterial color="#050508" roughness={0.1} metalness={0.8} />
+      </mesh>
+      {/* Antenna */}
+      <mesh position={[0.26, 0.70, -0.12]} castShadow>{silverMat}
+        <cylinderGeometry args={[0.016, 0.016, 0.35, 5]} />
+      </mesh>
+      <mesh position={[0.26, 0.89, -0.12]}>
+        <sphereGeometry args={[0.038, 7, 7]} />
+        <meshStandardMaterial color="#ff3333" emissive="#ff1111" emissiveIntensity={0.8} />
+      </mesh>
+      {/* 6 wheels */}
+      {[-0.51, 0.51].map((xPos, ci) =>
+        [-0.54, 0.0, 0.54].map((zOff, ri) => (
+          <group key={`w${ci}${ri}`} position={[xPos, 0.04, zOff]}>
+            <mesh rotation={[0,0,Math.PI/2]} castShadow>
+              {wMat}
+              <cylinderGeometry args={[0.175, 0.175, 0.095, 12]} />
+            </mesh>
+            {/* Tread chevrons */}
+            {Array.from({length:6},(_,k) => (
+              <mesh key={k} rotation={[k*Math.PI/3,0,Math.PI/2]}>
+                <torusGeometry args={[0.175, 0.011, 4, 10, Math.PI*0.55]} />
+                <meshStandardMaterial color="#0e0e08" />
+              </mesh>
+            ))}
+            {/* Suspension arm */}
+            <mesh position={[xPos<0?0.15:-0.15, 0.14, 0]}>
+              <boxGeometry args={[0.26, 0.035, 0.035]} />
+              <meshStandardMaterial color="#6a6a5a" roughness={0.8} />
+            </mesh>
+          </group>
+        ))
+      )}
     </group>
   );
 }
@@ -210,7 +132,6 @@ function PeriapsisFlag({ position }) {
 function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningModel, wireframe, initPos }) {
   const { update } = useRoverController(roverRef, setRoverState, pathRef, activeRoute, learningModel);
 
-  // Set rover's initial world position on first mount
   useEffect(() => {
     if (roverRef.current && initPos) {
       roverRef.current.position.set(initPos.x, initPos.y, initPos.z);
@@ -220,13 +141,8 @@ function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningM
   useFrame(({ clock }) => update(clock.getElapsedTime() * 1000));
   return (
     <group ref={roverRef}>
-      <group scale={[5.01, 5.01, 5.01]}>
+      <group scale={[1.67, 1.67, 1.67]}>
         <RoverBody wireframe={wireframe} />
-        {/* Flags sit in model-space (0–1.4 units), scaled with rover */}
-        <Suspense fallback={null}>
-          <TurkishFlag   position={[-0.26, 1.15, 0.10]} />
-          <PeriapsisFlag position={[ 0.26, 1.15, 0.10]} />
-        </Suspense>
       </group>
     </group>
   );
