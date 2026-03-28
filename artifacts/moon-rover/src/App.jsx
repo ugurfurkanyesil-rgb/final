@@ -222,10 +222,11 @@ export default function App() {
     const route = routes[activeRoute].path;
     if (route?.length > 0) {
       const first = route[0];
+      // Use _teleportTo so the controller snaps the rover to route start on next frame
+      // (NO setResetKey — remounting destroys roverRef and resets position to [0,0,0])
       pathRef.current._roverTrail  = [[first[0], first[1], first[2]]];
       pathRef.current._waypointIdx = 0;
-      setRoverState(s => ({ ...s, x: first[0], y: first[1], z: first[2], autoMode: true }));
-      setResetKey(k => k + 1);
+      pathRef.current._teleportTo  = { x: first[0], y: first[1], z: first[2] };
       setIsRoving(true);
       addLog(`Rover started on ${activeRoute} (${route.length} pts).`);
     }

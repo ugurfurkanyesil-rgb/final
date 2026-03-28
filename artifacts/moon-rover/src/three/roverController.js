@@ -57,11 +57,21 @@ export function useRoverController(roverRef, setRoverState, pathRef, activeRoute
   const update = useCallback((timestamp) => {
     if (!roverRef.current) return;
     const now = timestamp ?? performance.now();
-    if (lastTRef.current === null) { lastTRef.current = now; return; }
+    if (lastTRef.current === null) { lastTRef.current = now; }
     const dt  = Math.min((now - lastTRef.current) / 1000, 0.05);
     lastTRef.current = now;
 
     const rover = roverRef.current;
+
+    // ---- Teleport to start of route (set once by handleStartRover) ----
+    const tp = pathRef.current._teleportTo;
+    if (tp) {
+      rover.position.set(tp.x, tp.y, tp.z);
+      velRef.current = 0;
+      pathRef.current._teleportTo = null;
+      stuckRef.current = { t: 0, x: tp.x, z: tp.z };
+    }
+
     let vel     = velRef.current;
     let isAuto  = false;
 

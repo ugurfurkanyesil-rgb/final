@@ -4,7 +4,7 @@
  * Full touchpad / mouse / scroll controls.
  */
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
@@ -129,8 +129,16 @@ function RoverBody({ wireframe }) {
   );
 }
 
-function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningModel, wireframe }) {
+function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningModel, wireframe, initPos }) {
   const { update } = useRoverController(roverRef, setRoverState, pathRef, activeRoute, learningModel);
+
+  // Set rover's initial world position on first mount
+  useEffect(() => {
+    if (roverRef.current && initPos) {
+      roverRef.current.position.set(initPos.x, initPos.y, initPos.z);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useFrame(({ clock }) => update(clock.getElapsedTime() * 1000));
   return (
     <group ref={roverRef}>
@@ -410,6 +418,7 @@ export default function MoonScene({
         activeRoute={activeRoute}
         learningModel={learningModel}
         wireframe={wireframe}
+        initPos={roverState}
       />
 
       <CameraController roverRef={roverRef} cameraMode={cameraMode} orbitRef={orbitRef} />
