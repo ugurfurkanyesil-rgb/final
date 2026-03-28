@@ -1,12 +1,26 @@
 /**
- * Pathfinder - A* with extreme crater/slope/illumination awareness
- * Routes computed for multiple waypoints chained together.
- * Each route returns { path, stats } with full analysis.
+ * Pathfinder - A* with crater walls, debris avoidance, illumination-aware costs.
+ * Craters are IMPASSABLE walls — rover path can never enter them.
+ * Debris objects have exclusion zones added to the cost map.
  */
 
-import { TERRAIN_SIZE, GRID_RES, getTerrainHeight } from '../three/terrainGenerator.js';
+import { TERRAIN_SIZE, GRID_RES, getTerrainHeight, CRATERS } from '../three/terrainGenerator.js';
 
 const HALF = TERRAIN_SIZE / 2;
+
+// Debris positions (x, z, radius) — match generateDebrisPositions() in terrainGenerator.js
+const DEBRIS_ZONES = [
+  { x: -32, z:  14, r: 3.5 },
+  { x:  28, z: -42, r: 2.5 },
+  { x: -14, z: -30, r: 3.0 },
+  { x:  44, z:  20, r: 2.0 },
+  { x:  -4, z:  30, r: 3.5 },
+  { x:  18, z:  48, r: 2.5 },
+  { x: -46, z:  -4, r: 2.5 },
+  { x:  38, z: -44, r: 3.0 },
+  { x: -24, z:  46, r: 2.0 },
+  { x:   8, z: -44, r: 2.5 },
+];
 
 export function worldToGrid(wx, wz) {
   const col = Math.round(((wx + HALF) / TERRAIN_SIZE) * (GRID_RES - 1));
@@ -63,31 +77,61 @@ export function buildIlluminationMap(sunAngleDeg, hMap) {
   return illum;
 }
 
+// ---- Impassable map (craters = walls, debris = obstacles) ----
+// Built once and reused. Cells with value true are completely blocked.
+let _wallMap = null;
+function getWallMap() {
+  if (_wallMap) return _wallMap;
+  _wallMap = new Uint8Array(GRID_RES * GRID_RES);
+  for (let row = 0; row < GRID_RES; row++) {
+    for (let col = 0; col < GRID_RES; col++) {
+      const wx = -HALF + (col / (GRID_RES - 1)) * TERRAIN_SIZE;
+      const wz = -HALF + (row / (GRID_RES - 1)) * TERRAIN_SIZE;
+
+      // Crater interior = impassable wall
+      for (const c of CRATERS) {
+        const d = Math.sqrt((wx - c.x) ** 2 + (wz - c.z) ** 2);
+        if (d < c.radius * 0.88) { _wallMap[row * GRID_RES + col] = 1; break; }
+      }
+
+      // Debris exclusion zones
+      if (!_wallMap[row * GRID_RES + col]) {
+        for (const dz of DEBRIS_ZONES) {
+          const d = Math.sqrt((wx - dz.x) ** 2 + (wz - dz.z) ** 2);
+          if (d < dz.r) { _wallMap[row * GRID_RES + col] = 1; break; }
+        }
+      }
+    }
+  }
+  return _wallMap;
+}
+
 // ---- Cost Maps ----
 let _costCache = {};
 
-/**
- * Cost map with crater, slope, AND illumination (shadow = dangerous for AUTO/SAFE).
- */
 function buildCostMap(mode, slopeMap, craterMask, illumMap) {
   const params = {
-    SAFE: { craterC: 6000, slopeC: 900, slopeThr: 0.12, illumC: 120 },
-    ECO:  { craterC: 2500, slopeC: 650, slopeThr: 0.18, illumC: 80  },
-    FAST: { craterC: 1800, slopeC: 200, slopeThr: 0.28, illumC: 20  },
-    AUTO: { craterC: 3500, slopeC: 550, slopeThr: 0.18, illumC: 100 },
+    SAFE: { slopeC: 900, slopeThr: 0.12, illumC: 120 },
+    ECO:  { slopeC: 650, slopeThr: 0.18, illumC: 80  },
+    FAST: { slopeC: 200, slopeThr: 0.28, illumC: 20  },
+    AUTO: { slopeC: 550, slopeThr: 0.18, illumC: 100 },
   };
   const p = params[mode] || params.AUTO;
+  const wall = getWallMap();
   const cost = new Float32Array(GRID_RES * GRID_RES);
 
   for (let i = 0; i < GRID_RES * GRID_RES; i++) {
-    const slope  = slopeMap   ? slopeMap[i]   : 0;
-    const crater = craterMask ? craterMask[i]  : 0;
-    const illum  = illumMap   ? illumMap[i]    : 0.5;
+    // Walls are completely impassable — assign near-infinite cost
+    if (wall[i]) { cost[i] = 1e9; continue; }
+
+    const slope  = slopeMap  ? slopeMap[i]  : 0;
+    const crater = craterMask? craterMask[i] : 0;
+    const illum  = illumMap  ? illumMap[i]   : 0.5;
 
     let c = 1.0;
-    if (crater > 0.05) c += crater * crater * p.craterC;
+    // Crater rim / near-crater still expensive
+    if (crater > 0.05) c += crater * crater * 3500;
     if (slope > p.slopeThr) { const ex = (slope-p.slopeThr)/p.slopeThr; c += ex*ex*p.slopeC; }
-    // Shadow penalty: unlit areas harder to traverse safely
     c += (1.0 - illum) * p.illumC;
     cost[i] = c;
   }
@@ -95,9 +139,29 @@ function buildCostMap(mode, slopeMap, craterMask, illumMap) {
 }
 
 // ---- A* Core ----
+// Returns null if goal is a wall (no path possible).
 function aStar(sr, sc, er, ec, costMap) {
   const N = GRID_RES;
-  const h = (r,c) => Math.sqrt((r-er)**2+(c-ec)**2);
+  const ek = er*N+ec;
+
+  // If goal is a wall, find nearest non-wall grid cell
+  const wall = getWallMap();
+  let actualEr = er, actualEc = ec;
+  if (wall[ek]) {
+    let best = Infinity, br = er, bc = ec;
+    for (let dr = -6; dr <= 6; dr++) {
+      for (let dc = -6; dc <= 6; dc++) {
+        const nr = er+dr, nc = ec+dc;
+        if (nr<0||nr>=N||nc<0||nc>=N) continue;
+        if (wall[nr*N+nc]) continue;
+        const d = Math.sqrt(dr*dr+dc*dc);
+        if (d < best) { best=d; br=nr; bc=nc; }
+      }
+    }
+    actualEr = br; actualEc = bc;
+  }
+
+  const h = (r,c) => Math.sqrt((r-actualEr)**2+(c-actualEc)**2);
   const gScore = new Float32Array(N*N).fill(Infinity);
   const cameFrom = new Int32Array(N*N).fill(-1);
   const visited = new Uint8Array(N*N);
@@ -112,12 +176,12 @@ function aStar(sr, sc, er, ec, costMap) {
     const k = row*N+col;
     if (visited[k]) continue;
     visited[k] = 1;
-    if (row===er && col===ec) {
+    if (row===actualEr && col===actualEc) {
       const path = [];
       let cur = k;
       while (cur !== -1) {
         const r=Math.floor(cur/N), c=cur%N;
-        const { wx, wz } = gridToWorld(c,r);
+        const { wx, wz } = gridToWorld(c, r);
         path.unshift([wx, getTerrainHeight(wx,wz)+0.18, wz]);
         cur = cameFrom[cur];
       }
@@ -128,6 +192,7 @@ function aStar(sr, sc, er, ec, costMap) {
       if (nr<0||nr>=N||nc<0||nc>=N) continue;
       const nk=nr*N+nc;
       if (visited[nk]) continue;
+      if (wall[nk]) continue; // Skip walls entirely
       const diag = dr!==0&&dc!==0;
       const tg = gScore[k] + (diag?1.414:1.0)*costMap[nk];
       if (tg < gScore[nk]) {
@@ -136,7 +201,7 @@ function aStar(sr, sc, er, ec, costMap) {
       }
     }
   }
-  return _fallback(sr,sc,er,ec);
+  return _fallback(sr,sc,actualEr,actualEc);
 }
 
 function _fallback(sr,sc,er,ec) {
@@ -144,29 +209,33 @@ function _fallback(sr,sc,er,ec) {
   const path = [];
   for (let i=0; i<=steps; i++) {
     const r=Math.round(sr+i/steps*(er-sr)), c=Math.round(sc+i/steps*(ec-sc));
-    const { wx, wz } = gridToWorld(c,r);
+    const { wx, wz } = gridToWorld(c, r);
     path.push([wx, getTerrainHeight(wx,wz)+0.18, wz]);
   }
   return path;
 }
 
-function smoothPath(path, passes=2) {
+function smoothPath(path, passes=3) {
   if (path.length < 4) return path;
+  const wall = getWallMap();
   let pts = [...path];
   for (let p=0; p<passes; p++) {
     const out = [pts[0]];
     for (let i=1; i<pts.length-1; i++) {
       const px=(pts[i-1][0]+pts[i][0]*2+pts[i+1][0])/4;
       const pz=(pts[i-1][2]+pts[i][2]*2+pts[i+1][2])/4;
+      // Don't smooth into a wall
+      const { col, row } = worldToGrid(px, pz);
+      if (wall[row*GRID_RES+col]) { out.push(pts[i]); continue; }
       out.push([px, getTerrainHeight(px,pz)+0.18, pz]);
     }
     out.push(pts[pts.length-1]);
     pts = out;
   }
-  const step = Math.max(1, Math.floor(pts.length/160));
+  const step = Math.max(1, Math.floor(pts.length/200));
   const result = [];
   for (let i=0; i<pts.length; i+=step) result.push(pts[i]);
-  if (result[result.length-1]!==pts[pts.length-1]) result.push(pts[pts.length-1]);
+  if (result[result.length-1] !== pts[pts.length-1]) result.push(pts[pts.length-1]);
   return result;
 }
 
@@ -179,9 +248,9 @@ function computeRouteStats(path, slopeMap, craterMask, illumMap) {
     dist += Math.sqrt(dx*dx+dz*dz);
     const { col, row } = worldToGrid(path[i][0], path[i][2]);
     const k = row*GRID_RES+col;
-    const slope  = slopeMap?.[k]   ?? 0;
+    const slope  = slopeMap?.[k]  ?? 0;
     const crater = craterMask?.[k] ?? 0;
-    const illum  = illumMap?.[k]   ?? 0.5;
+    const illum  = illumMap?.[k]  ?? 0.5;
     sumHazard += crater;
     sumSlip   += Math.min(1, slope*1.5 + crater*0.3);
     sumSlope  += Math.atan(slope)*180/Math.PI;
@@ -216,13 +285,6 @@ function chainAStar(waypoints, costMap) {
 }
 
 // ---- Main Export ----
-/**
- * @param {Array<{x,z}>} waypoints  - Ordered list (min 2: start + end, optional intermediate)
- * @param {Float32Array} slopeMap
- * @param {Float32Array} craterMask
- * @param {Float32Array} hMap       - Height map (for illumination)
- * @param {number} sunAngleDeg      - Sun azimuth in degrees
- */
 export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg = 45) {
   if (!waypoints || waypoints.length < 2) throw new Error('Need at least 2 waypoints');
 
@@ -242,13 +304,13 @@ export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg
   return result;
 }
 
-export function clearPathCache() { _costCache = {}; _illumCache = {}; }
+export function clearPathCache() { _costCache = {}; _illumCache = {}; _wallMap = null; }
 
 /** Check how hazardous a world position is (0=safe, 1=very dangerous) */
 export function getHazardAtPoint(wx, wz, craterMask, slopeMap) {
   const { col, row } = worldToGrid(wx, wz);
-  const k = row*GRID_RES+col;
+  const k = row * GRID_RES + col;
   const crater = craterMask?.[k] ?? 0;
   const slope  = slopeMap?.[k]  ?? 0;
-  return Math.min(1, crater*1.0 + Math.max(0, slope-0.25)*2.0);
+  return Math.min(1, crater * 1.0 + Math.max(0, slope - 0.25) * 2.0);
 }

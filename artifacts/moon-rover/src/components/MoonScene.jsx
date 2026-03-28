@@ -132,7 +132,13 @@ function RoverBody({ wireframe }) {
 function RoverPhysics({ roverRef, setRoverState, pathRef, activeRoute, learningModel, wireframe }) {
   const { update } = useRoverController(roverRef, setRoverState, pathRef, activeRoute, learningModel);
   useFrame(({ clock }) => update(clock.getElapsedTime() * 1000));
-  return <group ref={roverRef}><RoverBody wireframe={wireframe} /></group>;
+  return (
+    <group ref={roverRef}>
+      <group scale={[5, 5, 5]}>
+        <RoverBody wireframe={wireframe} />
+      </group>
+    </group>
+  );
 }
 
 // ---- Rocks ----

@@ -102,15 +102,31 @@ export default function App() {
     const { sm: sm2, cm: cm2 } = getMaps();
     const hazard = getHazardAtPoint(pos.x, pos.z, cm2, sm2);
 
-    if (hazard > 0.55) {
+    // Hard crater check — reject immediately if inside crater bowl
+    const { col, row } = (() => {
+      const GRID_RES = 256, HALF2 = 50;
+      const c = Math.round(((pos.x + HALF2) / 100) * (GRID_RES - 1));
+      const r = Math.round(((pos.z + HALF2) / 100) * (GRID_RES - 1));
+      return { col: Math.max(0, Math.min(GRID_RES-1, c)), row: Math.max(0, Math.min(GRID_RES-1, r)) };
+    })();
+    const craterVal = cm2 ? cm2[row * 256 + col] : 0;
+
+    if (craterVal > 0.75) {
       showToast(
-        `NO PATH FOUND — Waypoint lands in hazardous zone (crater / steep slope). Choose another location.`,
+        '⛔ WAYPOINT REJECTED — Inside a crater! Rover can never enter crater zones. Choose flat terrain.',
+        'error', 7000
+      );
+      return;
+    }
+    if (hazard > 0.45) {
+      showToast(
+        `NO PATH FOUND — Waypoint in hazardous zone (danger: ${(hazard*100).toFixed(0)}%). Choose safer terrain.`,
         'error', 6000
       );
-      return; // Reject the waypoint
+      return;
     }
-    if (hazard > 0.30) {
-      showToast(`⚠ Waypoint near hazard zone (danger: ${(hazard*100).toFixed(0)}%). Path may deviate significantly.`, 'warning');
+    if (hazard > 0.25) {
+      showToast(`⚠ Waypoint near hazard zone (danger: ${(hazard*100).toFixed(0)}%). Path will detour around obstacles.`, 'warning');
     }
 
     setWaypoints(prev => {
@@ -132,9 +148,16 @@ export default function App() {
   // Override first waypoint → always teleport rover
   const setStartWaypoint = useCallback((pos) => {
     const { sm: sm2, cm: cm2 } = getMaps();
+    const col = Math.max(0, Math.min(255, Math.round(((pos.x + 50) / 100) * 255)));
+    const row = Math.max(0, Math.min(255, Math.round(((pos.z + 50) / 100) * 255)));
+    const craterVal = cm2 ? cm2[row * 256 + col] : 0;
+    if (craterVal > 0.75) {
+      showToast('⛔ WAYPOINT REJECTED — Inside a crater! Rover never enters crater zones. Choose flat terrain.', 'error', 7000);
+      return;
+    }
     const hazard = getHazardAtPoint(pos.x, pos.z, cm2, sm2);
-    if (hazard > 0.55) {
-      showToast('NO PATH FOUND — Start point in hazardous zone (crater). Choose flat terrain.', 'error', 6000);
+    if (hazard > 0.45) {
+      showToast('NO PATH FOUND — Start point in hazardous zone. Choose flat terrain.', 'error', 6000);
       return;
     }
     const y = getTerrainHeight(pos.x, pos.z);
