@@ -313,7 +313,53 @@ function HeatmapViewer({ slopeMap, craterMask, hMap, sunAngle }) {
   );
 }
 
-// ---- Main Export ----
+// ---- Export helpers ----
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function exportPNG() {
+  // The Three.js canvas is the first <canvas> in the 3D scene div
+  const canvas = document.querySelector('canvas');
+  if (!canvas) return false;
+  canvas.toBlob(blob => {
+    if (blob) downloadBlob(blob, `moon_rover_${Date.now()}.png`);
+  }, 'image/png');
+  return true;
+}
+
+function exportJSON(waypoints, routes, activeRoute, sunAngleDeg) {
+  const payload = {
+    version: 1,
+    timestamp: new Date().toISOString(),
+    sunAngleDeg,
+    activeRoute,
+    waypoints: waypoints.map(w => ({ x: +w.x.toFixed(2), z: +w.z.toFixed(2) })),
+    routes: routes
+      ? Object.fromEntries(Object.entries(routes).map(([mode, r]) => [mode, {
+          stats: r.stats,
+          path:  r.path.map(([x, y, z]) => [+x.toFixed(2), +y.toFixed(2), +z.toFixed(2)]),
+        }]))
+      : null,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, `moon_rover_route_${Date.now()}.json`);
+}
+
+function buildShareURL(waypoints, activeRoute, sunAngleDeg) {
+  const state = {
+    wp: waypoints.map(w => [Math.round(w.x * 10) / 10, Math.round(w.z * 10) / 10]),
+    r:  activeRoute,
+    s:  sunAngleDeg,
+  };
+  const encoded = btoa(JSON.stringify(state));
+  const base = window.location.href.split('?')[0];
+  return `${base}?s=${encoded}`;
+}
+
 export default function RightPanel({
   roverState, pathRef,
   routes, activeRoute, setActiveRoute,
@@ -324,9 +370,10 @@ export default function RightPanel({
   wireframe, setWireframe,
   onStartRover, onStopRover, isRoving,
   slopeMap, craterMask, hMap,
-  learningModel, routeLog,
+  learningModel, routeLog, showToast,
 }) {
   const [pickMode, setPickMode] = useState(false);
+  const [shareLabel, setShareLabel] = useState('SHARE LINK');
 
   const handlePick = useCallback(pos => {
     if (waypoints.length === 0) {
@@ -508,6 +555,67 @@ export default function RightPanel({
             <div>Speed: <V>{(speed*3.6).toFixed(1)}</V> km/h</div>
             <div>Heading: <V>{((heading*180/Math.PI+360)%360).toFixed(0)}°</V></div>
             <div>Trail pts: <V>{trail}</V></div>
+          </div>
+        </Sect>
+
+        {/* Exports & Share */}
+        <Sect label="Export & Share">
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+
+            {/* PNG */}
+            <button onClick={() => {
+              const ok = exportPNG();
+              if (!ok) { showToast?.('Could not capture scene — try again in a moment.', 'warning'); return; }
+              showToast?.('PNG saved to Downloads.', 'info');
+            }} style={{
+              width:'100%', padding:'6px 0', fontSize:9, fontFamily:'monospace',
+              fontWeight:'bold', letterSpacing:0.6, cursor:'pointer', borderRadius:3,
+              background:'rgba(0,30,50,0.6)', border:'1px solid rgba(40,120,180,0.55)',
+              color:'#66ccff', display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+            }}>
+              <span style={{fontSize:11}}>📷</span> EXPORT PNG
+            </button>
+
+            {/* JSON */}
+            <button onClick={() => {
+              if (!routes && waypoints.length < 2) {
+                showToast?.('Plan a route first to export JSON.', 'warning'); return;
+              }
+              exportJSON(waypoints, routes, activeRoute, sunAngleDeg);
+              showToast?.('JSON route file saved to Downloads.', 'info');
+            }} style={{
+              width:'100%', padding:'6px 0', fontSize:9, fontFamily:'monospace',
+              fontWeight:'bold', letterSpacing:0.6, cursor:'pointer', borderRadius:3,
+              background:'rgba(0,40,10,0.6)', border:'1px solid rgba(40,180,80,0.55)',
+              color:'#66ff99', display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+            }}>
+              <span style={{fontSize:11}}>📄</span> EXPORT JSON
+            </button>
+
+            {/* Share link */}
+            <button onClick={async () => {
+              if (waypoints.length < 1) {
+                showToast?.('Add at least one waypoint to share.', 'warning'); return;
+              }
+              const url = buildShareURL(waypoints, activeRoute, sunAngleDeg);
+              try {
+                await navigator.clipboard.writeText(url);
+                setShareLabel('✓ COPIED!');
+                showToast?.('Share link copied to clipboard.', 'info');
+                setTimeout(() => setShareLabel('SHARE LINK'), 2500);
+              } catch {
+                // Fallback: open in new window so user can copy manually
+                window.prompt('Copy this link:', url);
+              }
+            }} style={{
+              width:'100%', padding:'6px 0', fontSize:9, fontFamily:'monospace',
+              fontWeight:'bold', letterSpacing:0.6, cursor:'pointer', borderRadius:3,
+              background:'rgba(40,20,0,0.6)', border:'1px solid rgba(180,120,40,0.55)',
+              color:'#ffcc66', display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+            }}>
+              <span style={{fontSize:11}}>🔗</span> {shareLabel}
+            </button>
+
           </div>
         </Sect>
 

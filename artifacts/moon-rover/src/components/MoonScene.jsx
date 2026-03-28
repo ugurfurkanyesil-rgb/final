@@ -373,7 +373,7 @@ export default function MoonScene({
       shadows
       camera={{ position: [0, 30, -24], fov: 46, near: 0.1, far: 800 }}
       style={{ background: '#000008' }}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, preserveDrawingBuffer: true }}
     >
       <Stars radius={280} depth={55} count={4500} factor={3.5} saturation={0} fade />
 
