@@ -8,6 +8,9 @@ import RightPanel from './components/RightPanel';
 import { planAllRoutes, clearPathCache, getHazardAtPoint } from './utils/pathfinder';
 import { getTerrainHeight, buildHeightMap, buildSlopeMap, buildCraterMask, CRATERS } from './three/terrainGenerator';
 import { LearningModel } from './utils/learningModel';
+import { DUST_STATES, DUST_HAZARD_CONFIG, DEFAULT_HOME, createDustHazard } from './utils/dustHazardModel';
+import { evaluateDustInterference } from './utils/sensorInterferenceEvaluator';
+import { buildReturnToHomePath } from './utils/returnToHomeController';
 
 const MoonScene = lazy(() => import('./components/MoonScene'));
 
@@ -61,6 +64,17 @@ export default function App() {
   const [isRoving, setIsRoving]     = useState(false);
   const [resetKey, setResetKey]     = useState(0);
   const [toasts, setToasts]         = useState([]);
+
+  // ---- Dust Hazard State Machine ----
+  // 'normal' | 'dust_placement_mode' | 'dust_present' | 'dust_interference_detected' | 'signal_lost' | 'stopped' | 'return_to_home'
+  const [dustMode, setDustMode]     = useState(DUST_STATES.NORMAL);
+  const [dustHazard, setDustHazard] = useState(null); // null | { x, z, radius }
+  const [cameraSignalLost, setCameraSignalLost] = useState(false);
+  const [cameraSignalQuality, setCameraSignalQuality] = useState(1);
+  const homeWaypointRef    = useRef({ ...DEFAULT_HOME }); // updated by first waypoint if present
+  const prevActiveRouteRef = useRef(null); // restored after return trip
+  const interferenceLatchedRef = useRef(false);
+  const interferenceTicksRef = useRef(0);
 
   const pathRef      = useRef({ _roverTrail: [] });
   const learningModel = useMemo(() => new LearningModel(), []);
@@ -130,6 +144,7 @@ export default function App() {
       const next = [...prev, pos];
       // Teleport rover to first waypoint
       if (prev.length === 0) {
+        homeWaypointRef.current = pos; // pin home
         const y = getTerrainHeight(pos.x, pos.z);
         setRoverState(s => ({ ...s, x: pos.x, y: y + 0.45, z: pos.z }));
         setResetKey(k => k + 1);
@@ -161,6 +176,7 @@ export default function App() {
     const y = getTerrainHeight(pos.x, pos.z);
     setRoverState(s => ({ ...s, x: pos.x, y: y+0.45, z: pos.z }));
     setResetKey(k => k + 1);
+    homeWaypointRef.current = pos; // update home when start is overridden
     setWaypoints(prev => {
       const next = [...prev]; next[0] = pos; return next;
     });
@@ -177,9 +193,21 @@ export default function App() {
     setWaypoints([]);
     setRoutes(null);
     pathRef.current = { _roverTrail: pathRef.current._roverTrail || [] };
+    pathRef.current._waypointIdx = undefined;
     clearPathCache();
+    homeWaypointRef.current = { ...DEFAULT_HOME };
+    setDustHazard(null);
+    setDustMode(DUST_STATES.NORMAL);
+    setCameraSignalLost(false);
+    setCameraSignalQuality(1);
+    interferenceLatchedRef.current = false;
+    setIsRoving(false);
+    if (prevActiveRouteRef.current) {
+      setActiveRoute(prevActiveRouteRef.current);
+      prevActiveRouteRef.current = null;
+    }
     addLog('All waypoints cleared.');
-  }, [addLog]);
+  }, [addLog, setActiveRoute]);
 
   // ---- Path planning ----
   const handlePlanPath = useCallback(() => {
@@ -226,20 +254,182 @@ export default function App() {
       pathRef.current._waypointIdx = 0;
       pathRef.current._teleportTo  = { x: first[0], y: first[1], z: first[2] };
       setIsRoving(true);
+      if (dustHazard) setDustMode(DUST_STATES.PRESENT);
       addLog(`Rover started on ${activeRoute} (${route.length} pts).`);
     }
-  }, [activeRoute, routes, addLog]);
+  }, [activeRoute, routes, addLog, dustHazard]);
 
   const handleStopRover = useCallback(() => {
     pathRef.current._waypointIdx = undefined;
     setRoverState(s => ({ ...s, autoMode: false }));
     setIsRoving(false);
+    if (dustHazard) setDustMode(DUST_STATES.STOPPED);
     addLog('Rover stopped.');
-  }, [addLog]);
+  }, [addLog, dustHazard]);
 
   useEffect(() => {
     if (roverState.autoMode === false && isRoving) setIsRoving(false);
   }, [roverState.autoMode]);
+
+  // ---- Dust Hazard: delayed Return To Home ----
+  const handleReturnToHome = useCallback(() => {
+    if (dustMode === DUST_STATES.PLACEMENT) {
+      setDustMode(dustHazard ? DUST_STATES.PRESENT : DUST_STATES.NORMAL);
+      addLog('Dust placement cancelled.');
+      return;
+    }
+    setDustMode(DUST_STATES.PLACEMENT);
+    addLog('Dust placement mode active: click map to place dust hazard.');
+  }, [dustMode, dustHazard, addLog]);
+
+  const handleDustPlaced = useCallback((pos) => {
+    const hazard = createDustHazard(pos.x, pos.z, DUST_HAZARD_CONFIG);
+    setDustHazard(hazard);
+    setDustMode(DUST_STATES.PRESENT);
+    setCameraSignalLost(false);
+    setCameraSignalQuality(1);
+    interferenceLatchedRef.current = false;
+    interferenceTicksRef.current = 0;
+    showToast('ℹ Dust hazard placed. Rover remains active; interference monitoring enabled.', 'info', 5000);
+    addLog(`Dust hazard placed at (${pos.x.toFixed(0)}, ${pos.z.toFixed(0)}). Monitoring active.`);
+  }, [showToast, addLog]);
+
+  const startReturnToHome = useCallback((triggerReason) => {
+    if (interferenceLatchedRef.current) return;
+    interferenceLatchedRef.current = true;
+
+    setDustMode(DUST_STATES.INTERFERENCE);
+    showToast('⚠ DUST INTERFERENCE DETECTED — optical sensor instability.', 'warning', 6000);
+    addLog(`Dust interference detected (${triggerReason}).`);
+
+    // Stage 1: signal alarm + hard stop
+    setTimeout(() => {
+      setDustMode(DUST_STATES.SIGNAL_LOST);
+      setCameraSignalLost(true);
+      setCameraSignalQuality(0.06);
+      interferenceTicksRef.current = 0;
+      pathRef.current._waypointIdx = undefined;
+      setRoverState(s => ({ ...s, autoMode: false }));
+      setIsRoving(false);
+
+      setDustMode(DUST_STATES.STOPPED);
+
+      // Stage 2: plan and launch return route
+      const home = homeWaypointRef.current || { ...DEFAULT_HOME };
+      const roverPos = { x: roverState.x, z: roverState.z };
+      try {
+        const maps = getMaps();
+        const returnPath = buildReturnToHomePath(roverPos, home, maps, sunAngleDeg);
+        if (!returnPath || returnPath.length < 2) {
+          throw new Error('No valid return path available');
+        }
+
+        pathRef.current.HOME_RETURN = returnPath;
+        prevActiveRouteRef.current = activeRoute;
+        setRoutes(prev => ({ ...(prev || {}), HOME_RETURN: { path: returnPath, stats: null } }));
+        setActiveRoute('HOME_RETURN');
+        pathRef.current._roverTrail = [[roverState.x, roverState.y, roverState.z]];
+        pathRef.current._waypointIdx = 0;
+        pathRef.current._teleportTo = null;
+        setIsRoving(true);
+        setDustMode(DUST_STATES.RETURN_HOME);
+        addLog(`Return To Home started (${returnPath.length} pts).`);
+      } catch (err) {
+        addLog(`[ERR] Return To Home planning failed: ${err.message}`);
+        showToast('Return To Home path unavailable. Rover remains in safe STOPPED state.', 'error', 7000);
+      }
+    }, 260);
+  }, [addLog, showToast, roverState.x, roverState.y, roverState.z, getMaps, sunAngleDeg, activeRoute]);
+
+  // Continuous hazard monitoring: evaluated every navigation update via roverState changes.
+  useEffect(() => {
+    if (!dustHazard || !dustHazard.active) return;
+
+    const activePath =
+      routes?.[activeRoute]?.path
+      || (activeRoute === 'HOME_RETURN' ? pathRef.current.HOME_RETURN : null)
+      || null;
+
+    const evalResult = evaluateDustInterference(
+      roverState,
+      dustHazard,
+      activePath,
+      DUST_HAZARD_CONFIG
+    );
+
+    if (evalResult.interferenceDetected) {
+      interferenceTicksRef.current = Math.min(100, interferenceTicksRef.current + 1);
+    } else {
+      interferenceTicksRef.current = Math.max(0, interferenceTicksRef.current - 2);
+    }
+
+    // Start showing camera distortion later (close to signal-loss confirmation), not immediately.
+    if (!cameraSignalLost) {
+      const triggerTicks = DUST_HAZARD_CONFIG.triggerPersistenceTicks || 6;
+      const degradeStartTicks = Math.max(1, triggerTicks - 2);
+      if (interferenceTicksRef.current >= degradeStartTicks) {
+        setCameraSignalQuality(evalResult.signalQuality);
+      } else {
+        setCameraSignalQuality(1);
+      }
+    }
+
+    const sustainedInterference =
+      interferenceTicksRef.current >= (DUST_HAZARD_CONFIG.triggerPersistenceTicks || 6);
+
+    if (
+      sustainedInterference
+      && dustMode !== DUST_STATES.PLACEMENT
+      && dustMode !== DUST_STATES.RETURN_HOME
+      && dustMode !== DUST_STATES.SIGNAL_LOST
+      && dustMode !== DUST_STATES.STOPPED
+    ) {
+      startReturnToHome(evalResult.reason);
+    }
+  }, [
+    dustHazard,
+    routes,
+    activeRoute,
+    roverState,
+    dustMode,
+    cameraSignalLost,
+    startReturnToHome,
+  ]);
+
+  const handleClearDustHazard = useCallback(() => {
+    setDustHazard(null);
+    setDustMode(DUST_STATES.NORMAL);
+    setCameraSignalLost(false);
+    setCameraSignalQuality(1);
+    interferenceLatchedRef.current = false;
+    interferenceTicksRef.current = 0;
+    setRoutes(prev => {
+      if (!prev) return prev;
+      // eslint-disable-next-line no-unused-vars
+      const { HOME_RETURN: _unused, ...rest } = prev;
+      return Object.keys(rest).length ? rest : null;
+    });
+    if (prevActiveRouteRef.current && activeRoute === 'HOME_RETURN') {
+      setActiveRoute(prevActiveRouteRef.current);
+    }
+    prevActiveRouteRef.current = null;
+    addLog('Dust hazard cleared and monitoring reset.');
+  }, [addLog, setActiveRoute, activeRoute]);
+
+  useEffect(() => {
+    if (dustMode === DUST_STATES.RETURN_HOME && !isRoving) {
+      setDustMode(DUST_STATES.STOPPED);
+      setCameraSignalLost(false);
+      setCameraSignalQuality(1);
+      interferenceLatchedRef.current = false;
+      showToast('✓ Rover returned home after dust interference event.', 'info', 5500);
+      addLog('Rover reached home waypoint. Return sequence completed.');
+      if (prevActiveRouteRef.current) {
+        setActiveRoute(prevActiveRouteRef.current);
+      }
+      prevActiveRouteRef.current = null;
+    }
+  }, [dustMode, isRoving, showToast, addLog, setActiveRoute]);
 
   // Re-plan when sun angle changes significantly (10° threshold)
   const lastSunRef = useRef(sunAngleDeg);
@@ -285,6 +475,7 @@ export default function App() {
             wireframe={wireframe}
             sunAngleDeg={sunAngleDeg}
             learningModel={learningModel}
+            dustHazard={dustHazard}
           />
         </Suspense>
       </div>
@@ -330,6 +521,13 @@ export default function App() {
         learningModel={learningModel}
         routeLog={routeLog}
         showToast={showToast}
+        dustMode={dustMode}
+        dustHazard={dustHazard}
+        cameraSignalLost={cameraSignalLost}
+        cameraSignalQuality={cameraSignalQuality}
+        onReturnToHome={handleReturnToHome}
+        onDustPlaced={handleDustPlaced}
+        onClearDustHazard={handleClearDustHazard}
       />
     </div>
   );

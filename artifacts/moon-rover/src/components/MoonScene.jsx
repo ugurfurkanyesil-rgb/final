@@ -491,6 +491,42 @@ function SpaceDebris() {
   );
 }
 
+// ---- Natural Dust Cloud Hazard ----
+// Puff offsets are fixed fractions of hazard radius — no Math.random at render time
+// so the shape is stable across re-renders.
+const DUST_PUFF_OFFSETS = [
+  { rx:  0.00, ry: 0.20, rz:  0.00, rs: 0.70, o: 0.18 }, // dense centre
+  { rx:  0.30, ry: 0.30, rz:  0.20, rs: 0.50, o: 0.15 },
+  { rx: -0.28, ry: 0.25, rz:  0.30, rs: 0.45, o: 0.14 },
+  { rx:  0.22, ry: 0.42, rz: -0.28, rs: 0.42, o: 0.13 },
+  { rx: -0.32, ry: 0.35, rz: -0.22, rs: 0.48, o: 0.14 },
+  { rx:  0.08, ry: 0.55, rz:  0.12, rs: 0.38, o: 0.11 },
+  { rx: -0.18, ry: 0.12, rz: -0.10, rs: 0.55, o: 0.16 },
+  { rx:  0.24, ry: 0.18, rz: -0.18, rs: 0.40, o: 0.10 },
+  { rx: -0.12, ry: 0.48, rz:  0.28, rs: 0.35, o: 0.09 },
+  { rx:  0.00, ry: 0.08, rz:  0.00, rs: 0.85, o: 0.08 }, // wide low base
+];
+
+function DustCloudHazard({ hazard }) {
+  const { x, z, radius } = hazard;
+  const y = getTerrainHeight(x, z);
+  return (
+    <group position={[x, y, z]}>
+      {DUST_PUFF_OFFSETS.map((p, i) => (
+        <mesh key={i} position={[p.rx * radius, p.ry * radius, p.rz * radius]}>
+          <sphereGeometry args={[p.rs * radius, 9, 7]} />
+          <meshBasicMaterial
+            color="#b8b8b8"
+            transparent
+            opacity={p.o}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 // ---- Route Lines ----
 function RouteLine({ points, color, active }) {
   if (!points || points.length < 2) return null;
@@ -586,6 +622,7 @@ export default function MoonScene({
   waypoints,
   cameraMode, wireframe, sunAngleDeg,
   learningModel,
+  dustHazard,
 }) {
   const roverRef = useRef();
   const orbitRef = useRef();
@@ -630,8 +667,11 @@ export default function MoonScene({
 
       {/* Routes */}
       {routes && Object.entries(routes).map(([mode, pts]) => (
-        <RouteLine key={mode} points={pts} color={ROUTE_COLORS[mode]} active={mode === activeRoute} />
+        <RouteLine key={mode} points={pts} color={ROUTE_COLORS[mode] ?? '#ff8800'} active={mode === activeRoute} />
       ))}
+
+      {/* Dust cloud hazard — rendered in world space, anchored to terrain */}
+      {dustHazard && <DustCloudHazard hazard={dustHazard} />}
 
       {/* Numbered waypoint markers */}
       {waypoints && waypoints.map((wp, i) => (

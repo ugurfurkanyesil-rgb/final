@@ -3,4 +3,5 @@ export const ROUTE_COLORS = {
   ECO:  '#44dddd',
   FAST: '#4488ff',
   AUTO: '#ffcc22',
+  HOME_RETURN: '#ff8800',
 };

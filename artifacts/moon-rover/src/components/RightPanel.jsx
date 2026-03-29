@@ -12,6 +12,7 @@ import { TERRAIN_SIZE, CRATERS } from '../three/terrainGenerator';
 import { ROUTE_COLORS } from '../utils/constants';
 import { getTerrainCanvas } from '../utils/terrainRenderer';
 import { generateHeatmapCanvas } from '../utils/heatmaps';
+import { DUST_STATES } from '../utils/dustHazardModel';
 
 const HALF = TERRAIN_SIZE / 2;
 const PW   = 218;  // panel width
@@ -38,7 +39,7 @@ function clamp(vx,vy,zoom) {
 }
 
 // ---- Mini-map ----
-function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick }) {
+function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick, dustHazard, dustPickMode, onDustPlace }) {
   const canvasRef   = useRef(null);
   const terrainRef  = useRef(null);
   const zoomRef     = useRef(1);
@@ -121,10 +122,45 @@ function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick })
       ctx.fillText(` CLICK → ADD WAYPOINT ${waypoints?.length||0}+1`,4,H-6);
     }
 
+    // Dust pick hint
+    if (dustPickMode) {
+      ctx.fillStyle='rgba(40,0,0,0.55)';ctx.fillRect(0,H-18,W,18);
+      ctx.fillStyle='#ffcc88';ctx.font='7.5px monospace';
+      ctx.fillText(' CLICK → PLACE DUST HAZARD',4,H-6);
+    }
+
+    // Dust cloud on minimap — soft multi-ring radial gradient
+    if (dustHazard) {
+      const {x:dcx,y:dcy}=w2m(dustHazard.x,dustHazard.z,vx,vy,zoom);
+      const dr=(dustHazard.radius/TERRAIN_SIZE)*MAP_S*zoom;
+      // Outer soft haze
+      const g2=ctx.createRadialGradient(dcx,dcy,0,dcx,dcy,dr*1.6);
+      g2.addColorStop(0,'rgba(180,180,175,0.55)');
+      g2.addColorStop(0.45,'rgba(150,150,145,0.38)');
+      g2.addColorStop(0.75,'rgba(120,120,115,0.20)');
+      g2.addColorStop(1,'rgba(100,100,95,0)');
+      ctx.beginPath();ctx.arc(dcx,dcy,dr*1.6,0,Math.PI*2);
+      ctx.fillStyle=g2;ctx.fill();
+      // Crisp centre puff
+      const g3=ctx.createRadialGradient(dcx,dcy,0,dcx,dcy,dr*0.65);
+      g3.addColorStop(0,'rgba(200,200,195,0.50)');
+      g3.addColorStop(1,'rgba(170,170,165,0)');
+      ctx.beginPath();ctx.arc(dcx,dcy,dr*0.65,0,Math.PI*2);
+      ctx.fillStyle=g3;ctx.fill();
+      // Dashed outline
+      ctx.save();ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(dcx,dcy,dr*1.4,0,Math.PI*2);
+      ctx.strokeStyle='rgba(220,160,60,0.7)';ctx.lineWidth=1.0;ctx.stroke();
+      ctx.restore();
+      // ☁ label
+      ctx.fillStyle='rgba(255,200,100,0.85)';ctx.font='bold 7px monospace';
+      ctx.fillText('☁ DUST',dcx+dr*1.4+2,dcy+3);
+    }
+
     // Zoom badge
     ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(W-32,3,29,13);
     ctx.fillStyle='#88cc88';ctx.font='7px monospace';ctx.fillText(`${zoom.toFixed(1)}x`,W-28,12.5);
-  }, [routes, activeRoute, waypoints, roverPos, pickMode]);
+  }, [routes, activeRoute, waypoints, roverPos, pickMode, dustHazard, dustPickMode]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -149,9 +185,9 @@ function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick })
   }, [onWheel]);
 
   const onMouseDown = useCallback(e => {
-    if (pickMode) return;
+    if (pickMode || dustPickMode) return;
     dragRef.current={sx:e.clientX,sy:e.clientY,vx:viewRef.current.x,vy:viewRef.current.y};
-  }, [pickMode]);
+  }, [pickMode, dustPickMode]);
 
   const onMouseMove = useCallback(e => {
     if (!dragRef.current) return;
@@ -166,18 +202,24 @@ function MiniMap({ waypoints, roverPos, routes, activeRoute, pickMode, onPick })
   const onMouseUp = useCallback(() => { dragRef.current=null; }, []);
 
   const onClick = useCallback(e => {
-    if (!pickMode||dragRef.current) return;
+    if (!pickMode && !dustPickMode) return;
+    if (dragRef.current) return;
     const rect=canvasRef.current.getBoundingClientRect();
     const mx=(e.clientX-rect.left)*(MAP_S/rect.width);
     const my=(e.clientY-rect.top)*(MAP_S/rect.height);
     const {wx,wz}=m2w(mx,my,viewRef.current.x,viewRef.current.y,zoomRef.current);
-    onPick({ x:Math.max(-HALF+2,Math.min(HALF-2,wx)), z:Math.max(-HALF+2,Math.min(HALF-2,wz)) });
-  }, [pickMode,onPick]);
+    const pos={ x:Math.max(-HALF+2,Math.min(HALF-2,wx)), z:Math.max(-HALF+2,Math.min(HALF-2,wz)) };
+    if (dustPickMode) {
+      onDustPlace?.(pos);
+    } else {
+      onPick(pos);
+    }
+  }, [pickMode,dustPickMode,onPick,onDustPlace]);
 
   return (
     <canvas ref={canvasRef} width={MAP_S} height={MAP_S}
       style={{ width:MAP_S,height:MAP_S,display:'block',
-        cursor:pickMode?'crosshair':'grab',
+        cursor:(pickMode||dustPickMode)?'crosshair':'grab',
         border:'1px solid rgba(80,130,60,0.4)', borderRadius:3 }}
       onClick={onClick} onMouseDown={onMouseDown} onMouseMove={onMouseMove}
       onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
@@ -235,7 +277,9 @@ function RouteAnalysis({ routes, activeRoute, onSelect }) {
   );
   return (
     <div style={{display:'flex',flexDirection:'column',gap:6}}>
-      {Object.entries(ROUTE_COLORS).map(([mode,color]) => {
+      {Object.entries(ROUTE_COLORS)
+        .filter(([mode]) => mode !== 'HOME_RETURN')
+        .map(([mode,color]) => {
         const r=routes[mode];
         const s=r?.stats;
         const active=mode===activeRoute;
@@ -314,7 +358,7 @@ function HeatmapViewer({ slopeMap, craterMask, hMap, sunAngle }) {
 }
 
 // ---- Image Processing Preview (Rover Camera 3D) ----
-function ProcessingMapPreview({ slopeMap, craterMask, hMap, roverPos }) {
+function ProcessingMapPreview({ slopeMap, craterMask, hMap, roverPos, signalLost, signalQuality }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -455,7 +499,55 @@ function ProcessingMapPreview({ slopeMap, craterMask, hMap, roverPos }) {
       ctx.lineTo(W, y);
       ctx.stroke();
     }
-  }, [slopeMap, craterMask, hMap, roverPos?.x, roverPos?.z, roverPos?.heading]);
+    // Dust interference camera degradation (noisy/glitchy, not full black)
+    const noiseLevel = Math.max(0, Math.min(1, 1 - (signalQuality ?? 1)));
+    if (noiseLevel > 0.04) {
+      const lines = Math.floor(24 + noiseLevel * 180);
+      for (let i = 0; i < lines; i++) {
+        const y = Math.random() * H;
+        ctx.strokeStyle = `rgba(${150 + Math.random() * 90},${150 + Math.random() * 90},${150 + Math.random() * 90},${0.06 + noiseLevel * 0.24})`;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y + (Math.random() - 0.5) * 3.5);
+        ctx.stroke();
+      }
+
+      const glitches = Math.floor(1 + noiseLevel * 12);
+      for (let i = 0; i < glitches; i++) {
+        const gw = 16 + Math.random() * 66;
+        const gh = 2 + Math.random() * 15;
+        const gx = Math.random() * (W - gw);
+        const gy = Math.random() * (H - gh);
+        ctx.fillStyle = `rgba(${120 + Math.random() * 120},${120 + Math.random() * 120},${120 + Math.random() * 120},${0.08 + noiseLevel * 0.30})`;
+        ctx.fillRect(gx, gy, gw, gh);
+      }
+    }
+
+    if (signalLost) {
+      for (let y = 0; y < H; y += 2) {
+        const n = 80 + Math.random() * 145;
+        ctx.strokeStyle = `rgba(${n},${n},${n},${0.09 + Math.random() * 0.2})`;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y + (Math.random() - 0.5) * 2.2);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = 'rgba(10,10,10,0.42)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = 'rgba(255,90,90,0.68)';
+      ctx.strokeRect(1, 1, W - 2, H - 2);
+      ctx.fillStyle = '#ff7755';
+      ctx.font = 'bold 11px monospace';
+      ctx.fillText('OPTICAL SENSOR FAILURE', 18, H / 2 - 10);
+      ctx.fillStyle = '#ffb48a';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText('SIGNAL LOST', 61, H / 2 + 8);
+      ctx.fillStyle = '#ffd8b4';
+      ctx.font = '7px monospace';
+      ctx.fillText('NO SIGNAL - DUST INTERFERENCE', 34, H / 2 + 22);
+    }
+  }, [slopeMap, craterMask, hMap, roverPos?.x, roverPos?.z, roverPos?.heading, signalLost, signalQuality]);
 
   return (
     <div>
@@ -475,8 +567,8 @@ function ProcessingMapPreview({ slopeMap, craterMask, hMap, roverPos }) {
           }}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 7, color: '#557755', marginTop: 2 }}>
-          <span style={{ color: '#66cc66' }}>SAFE</span>
-          <span style={{ color: '#8cd08c' }}>FRONT CAM + EDGE DETECT</span>
+          <span style={{ color: signalLost ? '#ff7755' : '#66cc66' }}>{signalLost ? 'NO SIGNAL' : 'SAFE'}</span>
+          <span style={{ color: signalLost ? '#ff9966' : '#8cd08c' }}>FRONT CAM + EDGE DETECT</span>
           <span style={{ color: '#ff6644' }}>RIM / HAZARD</span>
         </div>
       </div>
@@ -542,6 +634,7 @@ export default function RightPanel({
   onStartRover, onStopRover, isRoving,
   slopeMap, craterMask, hMap,
   learningModel, routeLog, showToast,
+  dustMode, dustHazard, cameraSignalLost, cameraSignalQuality, onReturnToHome, onDustPlaced, onClearDustHazard,
 }) {
   const [pickMode, setPickMode] = useState(false);
   const [shareLabel, setShareLabel] = useState('SHARE LINK');
@@ -564,6 +657,7 @@ export default function RightPanel({
     ? Object.fromEntries(Object.entries(routes).map(([m,r])=>[m, r?.path || r]))
     : null;
 
+  const dustPickMode = dustMode === 'dust_placement_mode';
   const startPos = waypoints[0] || null;
   const endPos   = waypoints[waypoints.length-1] || null;
 
@@ -588,8 +682,8 @@ export default function RightPanel({
         <div>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
             <Label>TOPOGRAPHIC MAP</Label>
-            <span style={{fontSize:7,color:'#4a884a'}}>
-              {pickMode ? '▶ CLICK TO PLACE WP' : 'SCROLL=ZOOM · DRAG=PAN'}
+            <span style={{fontSize:7,color: dustPickMode?'#ffcc88':'#4a884a'}}>
+              {dustPickMode ? '☁ CLICK TO PLACE DUST' : pickMode ? '▶ CLICK TO PLACE WP' : 'SCROLL=ZOOM · DRAG=PAN'}
             </span>
           </div>
           <MiniMap
@@ -599,6 +693,9 @@ export default function RightPanel({
             activeRoute={activeRoute}
             pickMode={pickMode}
             onPick={handlePick}
+            dustHazard={dustHazard}
+            dustPickMode={dustPickMode}
+            onDustPlace={onDustPlaced}
           />
           <div style={{fontSize:7,color:'#3a5a3a',marginTop:3,display:'flex',gap:4,justifyContent:'space-between'}}>
             <span style={{color:startPos?'#22ff66':'#2a4a2a'}}>
@@ -672,7 +769,9 @@ export default function RightPanel({
         {/* Route selector + start */}
         <Sect label="Select Route">
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:3,marginBottom:5}}>
-            {Object.entries(ROUTE_COLORS).map(([mode,color])=>(
+            {Object.entries(ROUTE_COLORS)
+              .filter(([mode]) => mode !== 'HOME_RETURN')
+              .map(([mode,color])=>(
               <div key={mode} onClick={()=>setActiveRoute(mode)} style={{
                 padding:'5px 3px',textAlign:'center',cursor:'pointer',borderRadius:3,
                 fontSize:9,fontWeight:'bold',
@@ -698,6 +797,84 @@ export default function RightPanel({
           </Btn>
         </Sect>
 
+        {/* ── Hazard Control ── */}
+        <Sect label="Hazard Control">
+          {/* Status banner */}
+          {dustMode === DUST_STATES.INTERFERENCE && (
+            <div style={{marginBottom:5,padding:'4px 6px',borderRadius:3,fontSize:8,fontFamily:'monospace',
+              background:'rgba(60,20,0,0.7)',border:'1px solid rgba(255,120,0,0.6)',color:'#ffcc66',
+              letterSpacing:0.4}}>
+              ⚠ DUST INTERFERENCE DETECTED
+            </div>
+          )}
+          {dustMode === DUST_STATES.SIGNAL_LOST && (
+            <div style={{marginBottom:5,padding:'4px 6px',borderRadius:3,fontSize:8,fontFamily:'monospace',
+              background:'rgba(65,0,0,0.72)',border:'1px solid rgba(255,80,80,0.68)',color:'#ff8a66',
+              letterSpacing:0.4}}>
+              ✖ SIGNAL LOST / OPTICAL SENSOR FAILURE
+            </div>
+          )}
+          {dustMode === DUST_STATES.RETURN_HOME && (
+            <div style={{marginBottom:5,padding:'4px 6px',borderRadius:3,fontSize:8,fontFamily:'monospace',
+              background:'rgba(40,10,0,0.7)',border:'1px solid rgba(255,80,0,0.5)',color:'#ff9955',
+              letterSpacing:0.4,animation:'slideDown 0.25s ease'}}>
+              ↩ RETURNING TO HOME BASE
+            </div>
+          )}
+          {dustMode === DUST_STATES.PRESENT && (
+            <div style={{marginBottom:5,padding:'4px 6px',borderRadius:3,fontSize:8,fontFamily:'monospace',
+              background:'rgba(24,24,24,0.62)',border:'1px solid rgba(150,150,150,0.45)',color:'#c9c9c9',
+              letterSpacing:0.4}}>
+              ☁ DUST PRESENT - CONTINUOUS MONITORING
+            </div>
+          )}
+          {dustMode === DUST_STATES.STOPPED && (
+            <div style={{marginBottom:5,padding:'4px 6px',borderRadius:3,fontSize:8,fontFamily:'monospace',
+              background:'rgba(0,30,0,0.7)',border:'1px solid rgba(60,180,60,0.5)',color:'#88ffaa',
+              letterSpacing:0.4}}>
+              ✓ Rover stopped safely.
+            </div>
+          )}
+
+          {/* Return To Home button */}
+          <button onClick={onReturnToHome} style={{
+            width:'100%',padding:'6px 0',fontSize:9,fontFamily:'monospace',fontWeight:'bold',
+            letterSpacing:0.7,cursor:'pointer',borderRadius:3,marginBottom:4,
+            background: dustPickMode
+              ? 'rgba(80,40,0,0.7)'
+              : dustMode===DUST_STATES.RETURN_HOME||dustMode===DUST_STATES.INTERFERENCE||dustMode===DUST_STATES.SIGNAL_LOST
+                ? 'rgba(50,20,0,0.5)'
+                : 'rgba(50,20,0,0.6)',
+            border:`1px solid ${dustPickMode?'rgba(255,160,0,0.8)':'rgba(255,100,0,0.55)'}`,
+            color: dustPickMode ? '#ffcc44' : '#ff9944',
+            display:'flex',alignItems:'center',justifyContent:'center',gap:5,
+            boxShadow: dustPickMode ? '0 0 8px rgba(255,140,0,0.4)' : 'none',
+          }}>
+            <span style={{fontSize:11}}>☁</span>
+            {dustPickMode ? '● PLACING DUST… (CANCEL)' : 'RETURN TO HOME'}
+          </button>
+
+          {dustHazard && (
+            <div style={{fontSize:7,fontFamily:'monospace',color:'#b5b5b5',marginBottom:3}}>
+              CAM SIGNAL: <span style={{color:cameraSignalLost ? '#ff6655' : '#aaffaa'}}>{cameraSignalLost ? 'LOST' : `${Math.round((cameraSignalQuality ?? 1) * 100)}%`}</span>
+            </div>
+          )}
+
+          {/* Dust hazard info + clear button */}
+          {dustHazard && (
+            <div style={{display:'flex',alignItems:'center',gap:3}}>
+              <div style={{flex:1,fontSize:7,fontFamily:'monospace',color:'rgba(200,160,100,0.8)',
+                background:'rgba(40,20,0,0.4)',borderRadius:3,padding:'3px 5px'}}>
+                ☁ ({dustHazard.x.toFixed(0)},{dustHazard.z.toFixed(0)}) r={dustHazard.radius}m
+              </div>
+              <Btn onClick={onClearDustHazard} color="#ff8844"
+                style={{flex:'none',padding:'3px 7px',fontSize:7}}>
+                CLEAR
+              </Btn>
+            </div>
+          )}
+        </Sect>
+
         {/* Route Analysis */}
         <Sect label="Route Analysis">
           <RouteAnalysis routes={routes} activeRoute={activeRoute} onSelect={setActiveRoute}/>
@@ -715,7 +892,14 @@ export default function RightPanel({
         <HeatmapViewer slopeMap={slopeMap} craterMask={craterMask} hMap={hMap} sunAngle={sunAngleDeg}/>
 
         {/* Image processing proof panel */}
-        <ProcessingMapPreview slopeMap={slopeMap} craterMask={craterMask} hMap={hMap} roverPos={{ x, z, heading }} />
+        <ProcessingMapPreview
+          slopeMap={slopeMap}
+          craterMask={craterMask}
+          hMap={hMap}
+          roverPos={{ x, z, heading }}
+          signalLost={cameraSignalLost}
+          signalQuality={cameraSignalQuality}
+        />
 
         {/* AI */}
         <Sect label="AI Learning">
