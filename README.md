@@ -4,6 +4,10 @@ Interactive Simulation Hub, etkileşimli simülasyonlar, 3D görselleştirme, ro
 
 Bu repo içindeki ana proje, Ay yüzeyinde görev yapan bir rover'ı simüle eden `moon-rover` uygulamasıdır. Uygulama; rota üretimi, çevresel risk değerlendirmesi, waypoint tabanlı görev akışı, kamera ve sahne yönetimi gibi konuları tek bir arayüzde birleştirir.
 
+Canlı yayın hedefi:
+
+- GitHub Pages: `https://ugurfurkanyesil-rgb.github.io/final/`
+
 ![Moon Rover Visual](./attached_assets/image_1774710280737.png)
 
 ## İçindekiler
