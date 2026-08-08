@@ -116,14 +116,23 @@ function getWallMap() {
 // ---- Cost Maps ----
 let _costCache = {};
 
-function buildCostMap(mode, slopeMap, craterMask, illumMap) {
-  const params = {
-    SAFE: { slopeC: 900, slopeThr: 0.12, illumC: 120 },
-    ECO:  { slopeC: 650, slopeThr: 0.18, illumC: 80  },
-    FAST: { slopeC: 200, slopeThr: 0.28, illumC: 20  },
-    AUTO: { slopeC: 550, slopeThr: 0.18, illumC: 100 },
-  };
-  const p = params[mode] || params.AUTO;
+// expC follows the same ~0.7-0.75× ratio to slopeC in every mode (SAFE
+// weighs learned-bad cells almost as heavily as slope, FAST barely at all),
+// so adding the experience term doesn't shift the existing SAFE/ECO/FAST/AUTO
+// balance — it scales with it.
+// Hoisted to module scope (not just local to buildCostMap) so
+// computeRouteStats/planAllRoutes can look up the same per-mode expC when
+// reporting how much of a route's cost came from learned experience —
+// single source of truth, no duplicated coefficients.
+const COST_PARAMS = {
+  SAFE: { slopeC: 900, slopeThr: 0.12, illumC: 120, expC: 700 },
+  ECO:  { slopeC: 650, slopeThr: 0.18, illumC: 80,  expC: 450 },
+  FAST: { slopeC: 200, slopeThr: 0.28, illumC: 20,  expC: 150 },
+  AUTO: { slopeC: 550, slopeThr: 0.18, illumC: 100, expC: 400 },
+};
+
+function buildCostMap(mode, slopeMap, craterMask, illumMap, experienceMap) {
+  const p = COST_PARAMS[mode] || COST_PARAMS.AUTO;
   const wall = getWallMap();
   const cost = new Float32Array(GRID_RES * GRID_RES);
 
@@ -134,12 +143,22 @@ function buildCostMap(mode, slopeMap, craterMask, illumMap) {
     const slope  = slopeMap  ? slopeMap[i]  : 0;
     const crater = craterMask? craterMask[i] : 0;
     const illum  = illumMap  ? illumMap[i]   : 0.5;
+    const exp    = experienceMap ? experienceMap[i] : 0;
 
     let c = 1.0;
     // Crater rim / near-crater still expensive
     if (crater > 0.05) c += crater * crater * 3500;
     if (slope > p.slopeThr) { const ex = (slope-p.slopeThr)/p.slopeThr; c += ex*ex*p.slopeC; }
     c += (1.0 - illum) * p.illumC;
+    // Learned-experience penalty — additive term on top of the terrain-only
+    // cost above, never replacing it. `exp` is the EMA'd difficulty from
+    // LearningModel.recordTraversal() (learningModel.js), 0 = never
+    // traversed / always easy, up to 1 = consistently rough. Squared like
+    // the slope-excess term so mildly-bad cells get a small nudge and
+    // consistently-bad cells are strongly steered around. Zero when no
+    // experienceMap is passed (or a cell has none), so callers that don't
+    // pass one see byte-identical costs to before this term existed.
+    if (exp > 0) c += exp * exp * p.expC;
     cost[i] = c;
   }
   return cost;
@@ -285,9 +304,15 @@ function smoothPath(path, passes=3) {
 // costMap is the same per-mode cost grid the A* search actually used (see
 // buildCostMap), so totalCost reflects the real routing cost instead of a
 // separately-hardcoded approximation of it.
-function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap) {
+//
+// experienceMap/expC (both optional) let this also report how much of that
+// totalCost came specifically from the learned-experience term — recomputed
+// per path cell with the exact same `exp*exp*expC` formula buildCostMap
+// used, so expCost/expCostPercent are a real breakdown of totalCost, not a
+// separate estimate. Omit either arg to skip the breakdown (expCost stays 0).
+function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap, experienceMap, expC) {
   if (!path || path.length < 2) return null;
-  let dist=0, sumHazard=0, sumSlip=0, sumSlope=0, sumIllum=0, totalCost=0, n=0;
+  let dist=0, sumHazard=0, sumSlip=0, sumSlope=0, sumIllum=0, totalCost=0, expCost=0, n=0;
   for (let i=1; i<path.length; i++) {
     const dx=path[i][0]-path[i-1][0], dz=path[i][2]-path[i-1][2];
     dist += Math.sqrt(dx*dx+dz*dz);
@@ -296,11 +321,13 @@ function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap) {
     const slope  = slopeMap?.[k]  ?? 0;
     const crater = craterMask?.[k] ?? 0;
     const illum  = illumMap?.[k]  ?? 0.5;
+    const exp    = experienceMap?.[k] ?? 0;
     sumHazard += hazardScore(crater, slope);
     sumSlip   += Math.min(1, slope*1.5 + crater*0.3);
     sumSlope  += Math.atan(slope)*180/Math.PI;
     sumIllum  += illum;
     totalCost += costMap ? costMap[k] : 1;
+    if (exp > 0 && expC) expCost += exp * exp * expC;
     n++;
   }
   const avg = x => n ? x/n : 0;
@@ -312,6 +339,8 @@ function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap) {
     avgIllumination:   avg(sumIllum),
     avgTraversability: 1 - avg(sumHazard),
     totalCost:         totalCost,
+    expCost:           expCost,
+    expCostPercent:    totalCost > 0 ? (expCost / totalCost) * 100 : 0,
     riskPercent:       (avg(sumHazard) + avg(sumSlip)) / 2 * 100,
   };
 }
@@ -330,7 +359,11 @@ function chainAStar(waypoints, costMap) {
 }
 
 // ---- Main Export ----
-export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg = 45) {
+// experienceMap: optional Float32Array (GRID_RES×GRID_RES, same layout as
+// slopeMap/craterMask) from LearningModel.getExperienceMap() — see
+// buildCostMap()'s experience-penalty term. Omit/pass null to plan without it
+// (existing callers keep their old behaviour unchanged).
+export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg = 45, experienceMap = null) {
   if (!waypoints || waypoints.length < 2) throw new Error('Need at least 2 waypoints');
 
   const illumMap = hMap ? buildIlluminationMap(sunAngleDeg, hMap) : null;
@@ -339,12 +372,31 @@ export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg
   for (const mode of ['SAFE','ECO','FAST','AUTO']) {
     const cacheKey = `${mode}_${Math.round(sunAngleDeg)}`;
     if (!_costCache[cacheKey]) {
-      _costCache[cacheKey] = buildCostMap(mode, slopeMap, craterMask, illumMap);
+      // Not keyed on experienceMap — the cache is invalidated wholesale by
+      // clearPathCache(), which LearningModel.recordTraversal() already
+      // calls every 50 traversals, so cost maps get periodically rebuilt
+      // with the latest learned experience without recomputing on every
+      // single traversal.
+      _costCache[cacheKey] = buildCostMap(mode, slopeMap, craterMask, illumMap, experienceMap);
     }
     const rawPath = chainAStar(waypoints, _costCache[cacheKey]);
     const path    = smoothPath(rawPath);
-    const stats   = computeRouteStats(path, slopeMap, craterMask, illumMap, _costCache[cacheKey]);
+    const expC    = (COST_PARAMS[mode] || COST_PARAMS.AUTO).expC;
+    const stats   = computeRouteStats(path, slopeMap, craterMask, illumMap, _costCache[cacheKey], experienceMap, expC);
     result[mode]  = { path, stats };
+
+    // Debug visibility into the experience-map integration: how much of
+    // this route's total A* cost came from previously-learned-bad cells.
+    // Only logs when an experienceMap was actually passed in, so callers
+    // that don't use learning stay silent. See buildCostMap()'s expC term
+    // and decisions/2026-08-08-deneyim-haritasi-maliyet-entegrasyonu.md.
+    if (experienceMap && stats) {
+      console.log(
+        `[LearningModel] ${mode}: totalCost=${stats.totalCost.toFixed(1)}, ` +
+        `experience contribution=${stats.expCost.toFixed(1)} ` +
+        `(${stats.expCostPercent.toFixed(1)}% of route cost)`
+      );
+    }
   }
   return result;
 }

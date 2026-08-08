@@ -221,7 +221,7 @@ export default function App() {
     setTimeout(() => {
       try {
         const { sm: sm2, cm: cm2, hm: hm2 } = getMaps();
-        const planned = planAllRoutes(waypoints, sm2, cm2, hm2, sunAngleDeg);
+        const planned = planAllRoutes(waypoints, sm2, cm2, hm2, sunAngleDeg, learningModel.getExperienceMap());
         setRoutes(planned);
         pathRef.current = {
           ...pathRef.current,
@@ -240,7 +240,7 @@ export default function App() {
         showToast(`Path planning failed: ${err.message}`, 'error');
       }
     }, 30);
-  }, [waypoints, getMaps, sunAngleDeg, showToast, addLog]);
+  }, [waypoints, getMaps, sunAngleDeg, showToast, addLog, learningModel]);
 
   // ---- Rover control ----
   const handleStartRover = useCallback(() => {
@@ -319,7 +319,7 @@ export default function App() {
       const roverPos = { x: roverState.x, z: roverState.z };
       try {
         const maps = getMaps();
-        const returnPath = buildReturnToHomePath(roverPos, home, maps, sunAngleDeg);
+        const returnPath = buildReturnToHomePath(roverPos, home, maps, sunAngleDeg, learningModel.getExperienceMap());
         if (!returnPath || returnPath.length < 2) {
           throw new Error('No valid return path available');
         }
@@ -339,7 +339,7 @@ export default function App() {
         showToast('Return To Home path unavailable. Rover remains in safe STOPPED state.', 'error', 7000);
       }
     }, 260);
-  }, [addLog, showToast, roverState.x, roverState.y, roverState.z, getMaps, sunAngleDeg, activeRoute]);
+  }, [addLog, showToast, roverState.x, roverState.y, roverState.z, getMaps, sunAngleDeg, activeRoute, learningModel]);
 
   // Continuous hazard monitoring: evaluated every navigation update via roverState changes.
   useEffect(() => {
