@@ -272,7 +272,12 @@ export default function App() {
   }, [roverState.autoMode]);
 
   // ---- Dust Hazard: delayed Return To Home ----
-  const handleReturnToHome = useCallback(() => {
+  // This only arms/cancels dust-hazard PLACEMENT mode — it never drives the
+  // rover home itself. The actual return-to-home drive is startReturnToHome()
+  // below, auto-triggered once a placed hazard causes sensor interference.
+  // Named for what it does (not "handleReturnToHome") so the RightPanel
+  // button wired to it isn't mislabeled as an immediate "go home" action.
+  const handleTriggerDustHazard = useCallback(() => {
     if (dustMode === DUST_STATES.PLACEMENT) {
       setDustMode(dustHazard ? DUST_STATES.PRESENT : DUST_STATES.NORMAL);
       addLog('Dust placement cancelled.');
@@ -525,7 +530,7 @@ export default function App() {
         dustHazard={dustHazard}
         cameraSignalLost={cameraSignalLost}
         cameraSignalQuality={cameraSignalQuality}
-        onReturnToHome={handleReturnToHome}
+        onTriggerDustHazard={handleTriggerDustHazard}
         onDustPlaced={handleDustPlaced}
         onClearDustHazard={handleClearDustHazard}
       />
