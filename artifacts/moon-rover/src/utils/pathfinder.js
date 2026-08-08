@@ -267,7 +267,7 @@ function computeRouteStats(path, slopeMap, craterMask, illumMap) {
     avgIllumination:   avg(sumIllum),
     avgTraversability: 1 - avg(sumHazard),
     totalCost:         totalCost,
-    riskPercent:       (avg(sumHazard) + avg(sumSlip)) / 2 * 10000,
+    riskPercent:       (avg(sumHazard) + avg(sumSlip)) / 2 * 100,
   };
 }
 
