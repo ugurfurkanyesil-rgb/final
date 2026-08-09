@@ -55,8 +55,8 @@ export function getSlopeMap() { ensureMaps(); return _slopeMap; }
 export function getCraterMask() { ensureMaps(); return _craterMask; }
 
 /** Draw a heatmap to a canvas element (also exported as generateHeatmapCanvas for compatibility) */
-export function generateHeatmapCanvas(canvas, type, slopeMapOverride, craterMaskOverride, hMapOverride, sunAngle) {
-  return drawHeatmap(canvas, type, null);
+export function generateHeatmapCanvas(canvas, type, slopeMapOverride, craterMaskOverride, hMapOverride, sunAngle, experienceMap) {
+  return drawHeatmap(canvas, type, experienceMap);
 }
 
 export function drawHeatmap(canvas, type, experienceMap) {
