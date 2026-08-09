@@ -18,10 +18,11 @@ const HALF = TERRAIN_SIZE / 2;
 const PW   = 218;  // panel width
 const MAP_S = 202; // mini-map px — fills panel width (218 - 8px×2 padding)
 
-const HEATMAP_OPTIONS = ['Slope','Slope Angle','Roughness','Slip Risk','Illumination','Hazard Score','Traversability'];
+const HEATMAP_OPTIONS = ['Slope','Slope Angle','Roughness','Slip Risk','Illumination','Hazard Score','Traversability','Experience'];
 const HM_COLORS = {
   'Slope':'#aaddaa','Slope Angle':'#88ccff','Roughness':'#ffcc88',
   'Slip Risk':'#ff8844','Illumination':'#ffffaa','Hazard Score':'#ff6655','Traversability':'#44ffaa',
+  'Experience':'#cc66ff',
 };
 const WP_COLORS_2D = ['#22ff55','#ffcc22','#44ddff','#ff88ff','#ffaa33','#aaffaa'];
 
@@ -317,12 +318,23 @@ function RouteAnalysis({ routes, activeRoute, onSelect }) {
 }
 
 // ---- Heatmap ----
-function HeatmapViewer({ slopeMap, craterMask, hMap, sunAngle }) {
+function HeatmapViewer({ slopeMap, craterMask, hMap, sunAngle, learningModel }) {
   const ref=useRef(null);
   const [sel,setSel]=useState('Hazard Score');
   const [open,setOpen]=useState(false);
-  useEffect(()=>{ if(ref.current) generateHeatmapCanvas(ref.current,sel,slopeMap,craterMask,hMap,sunAngle); },
-    [sel,slopeMap,craterMask,hMap,sunAngle]);
+  const [tick,setTick]=useState(0);
+  // Experience map is mutated in place (same array reference), so it needs a
+  // live poll while visible — other layers are derived from static terrain data.
+  useEffect(()=>{
+    if (sel !== 'Experience') return;
+    const id = setInterval(()=>setTick(t=>t+1), 500);
+    return () => clearInterval(id);
+  }, [sel]);
+  useEffect(()=>{
+    if (!ref.current) return;
+    const experienceMap = sel === 'Experience' ? learningModel?.getExperienceMap?.() : undefined;
+    generateHeatmapCanvas(ref.current,sel,slopeMap,craterMask,hMap,sunAngle,experienceMap);
+  }, [sel,slopeMap,craterMask,hMap,sunAngle,tick,learningModel]);
   return (
     <div>
       <Label>Parameter Heatmap</Label>
@@ -889,7 +901,7 @@ export default function RightPanel({
         </Sect>
 
         {/* Heatmap */}
-        <HeatmapViewer slopeMap={slopeMap} craterMask={craterMask} hMap={hMap} sunAngle={sunAngleDeg}/>
+        <HeatmapViewer slopeMap={slopeMap} craterMask={craterMask} hMap={hMap} sunAngle={sunAngleDeg} learningModel={learningModel}/>
 
         {/* Image processing proof panel */}
         <ProcessingMapPreview
