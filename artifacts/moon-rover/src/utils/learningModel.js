@@ -23,11 +23,13 @@ export class LearningModel {
     this.traversalCount++;
 
     for (let dr = -1; dr <= 1; dr++) {
+      const nr = row + dr;
+      if (nr < 0 || nr >= GRID_RES) continue;
       for (let dc = -1; dc <= 1; dc++) {
-        const ni = (row + dr) * GRID_RES + (col + dc);
-        if (ni >= 0 && ni < GRID_RES * GRID_RES) {
-          this.experienceMap[ni] *= (1 - DECAY);
-        }
+        const nc = col + dc;
+        if (nc < 0 || nc >= GRID_RES) continue;
+        const ni = nr * GRID_RES + nc;
+        this.experienceMap[ni] *= (1 - DECAY);
       }
     }
 
