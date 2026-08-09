@@ -1,6 +1,6 @@
-﻿---
+---
 name: plan
-description: Bir iÅŸe baÅŸlamadan Ã¶nce plan Ã§Ä±karmak iÃ§in kullan. Yeni Ã¶zellik, refactor, migrasyon veya kapsamÄ± belirsiz herhangi bir istekte devreye gir. Plan olmadan bÃ¼yÃ¼k deÄŸiÅŸikliÄŸe giriÅŸilmesini engeller.
+description: Bir işe başlamadan önce plan çıkarmak için kullan. Yeni özellik, refactor, migrasyon veya kapsamı belirsiz herhangi bir istekte devreye gir. Plan olmadan büyük değişikliğe girişilmesini engeller.
 ---
 
 # Planlama Disiplini
@@ -9,61 +9,61 @@ description: Bir iÅŸe baÅŸlamadan Ã¶nce plan Ã§Ä±karmak iÃ§in kullan
 
 | Durum | Plan? |
 |---|---|
-| Tek dosyada, geri almasÄ± kolay, aÃ§Ä±k bir dÃ¼zeltme | HayÄ±r â€” yap |
+| Tek dosyada, geri alması kolay, açık bir düzeltme | Hayır — yap |
 | 3+ dosyaya dokunuyor | Evet |
-| Mevcut bir davranÄ±ÅŸÄ± deÄŸiÅŸtiriyor | Evet |
-| KapsamÄ± belirsiz ("ÅŸunu iyileÅŸtirelim") | Evet â€” Ã¶nce netleÅŸtir |
-| Geri almasÄ± zor (veri ÅŸemasÄ±, dosya taÅŸÄ±ma) | Evet |
+| Mevcut bir davranışı değiştiriyor | Evet |
+| Kapsamı belirsiz ("şunu iyileştirelim") | Evet — önce netleştir |
+| Geri alması zor (veri şeması, dosya taşıma) | Evet |
 
-## BelirsizliÄŸi Ã¶nce Ã§Ã¶z
+## Belirsizliği önce çöz
 
-Plan yazmadan Ã¶nce cevabÄ± olmayan soru bÄ±rakma. SorularÄ±nÄ± **tek seferde** sor, en fazla Ã¼Ã§ tane.
+Plan yazmadan önce cevabı olmayan soru bırakma. Sorularını **tek seferde** sor, en fazla üç tane.
 
-KÃ¶tÃ¼: varsayÄ±p devam etmek, sonra "aslÄ±nda Ã¶yle demek istememiÅŸtim" ile karÅŸÄ±laÅŸmak.
-KÃ¶tÃ¼: her adÄ±mda bir soru sorup akÄ±ÅŸÄ± kesmek.
+Kötü: varsayıp devam etmek, sonra "aslında öyle demek istememiştim" ile karşılaşmak.
+Kötü: her adımda bir soru sorup akışı kesmek.
 
-## Plan formatÄ±
+## Plan formatı
 
 ```
 ## Hedef
-Tek cÃ¼mle. BittiÄŸinde ne doÄŸru olacak?
+Tek cümle. Bittiğinde ne doğru olacak?
 
-## BaÄŸlam
-Mevcut durum: hangi dosyalar, hangi mekanizma, neden ÅŸu an yetersiz.
+## Bağlam
+Mevcut durum: hangi dosyalar, hangi mekanizma, neden şu an yetersiz.
 
-## YaklaÅŸÄ±m
-SeÃ§ilen yol ve neden. Elenen alternatif varsa bir satÄ±r.
+## Yaklaşım
+Seçilen yol ve neden. Elenen alternatif varsa bir satır.
 
-## AdÄ±mlar
-1. <dosya/alan> â€” <yapÄ±lacak> â€” <bitti kriteri>
+## Adımlar
+1. <dosya/alan> — <yapılacak> — <bitti kriteri>
 2. ...
 
 ## Riskler
-- <ne bozulabilir> â†’ <nasÄ±l tespit ederiz>
+- <ne bozulabilir> → <nasıl tespit ederiz>
 
-## DoÄŸrulama
-Somut: hangi komut, hangi ekran, hangi sayÄ±.
+## Doğrulama
+Somut: hangi komut, hangi ekran, hangi sayı.
 
-## Kapsam dÄ±ÅŸÄ±
-BilinÃ§li olarak yapÄ±lmayacaklar.
+## Kapsam dışı
+Bilinçli olarak yapılmayacaklar.
 ```
 
-## Ä°yi adÄ±m / kÃ¶tÃ¼ adÄ±m
+## İyi adım / kötü adım
 
-**KÃ¶tÃ¼:** "Kodu temizle" Â· "PerformansÄ± iyileÅŸtir" Â· "Test ekle"
-BunlarÄ±n bitti kriteri yok, Ã¶lÃ§Ã¼lemez.
+**Kötü:** "Kodu temizle" · "Performansı iyileştir" · "Test ekle"
+Bunların bitti kriteri yok, ölçülemez.
 
-**Ä°yi:** "`x.js`'teki Ã¼Ã§ kopya hazard formÃ¼lÃ¼nÃ¼ tek fonksiyona indir; Ã¼Ã§ Ã§aÄŸrÄ± noktasÄ± da
-aynÄ± sonucu Ã¼retmeli, mevcut testler geÃ§meli."
+**İyi:** "`x.js`'teki üç kopya hazard formülünü tek fonksiyona indir; üç çağrı noktası da
+aynı sonucu üretmeli, mevcut testler geçmeli."
 
-## Fazlara bÃ¶lme
+## Fazlara bölme
 
-8+ adÄ±mlÄ± planÄ± fazlara bÃ¶l. **Her faz tek baÅŸÄ±na deÄŸer Ã¼retmeli ve durdurulabilir olmalÄ±** â€”
-"faz 1 bitti ama faz 2 olmadan iÅŸe yaramÄ±yor" kÃ¶tÃ¼ bir bÃ¶lÃ¼nmedir.
+8+ adımlı planı fazlara böl. **Her faz tek başına değer üretmeli ve durdurulabilir olmalı** —
+"faz 1 bitti ama faz 2 olmadan işe yaramıyor" kötü bir bölünmedir.
 
-## Plan bir sÃ¶zleÅŸmedir
+## Plan bir sözleşmedir
 
-Uygulama sÄ±rasÄ±nda plandan sapmak gerekiyorsa: dur, sapmayÄ± sÃ¶yle, onay al.
-Sessizce farklÄ± bir ÅŸey yapmak, planÄ±n anlamÄ±nÄ± yok eder.
+Uygulama sırasında plandan sapmak gerekiyorsa: dur, sapmayı söyle, onay al.
+Sessizce farklı bir şey yapmak, planın anlamını yok eder.
 
-Yol Ã¼stÃ¼nde fark edilen ilgisiz iyileÅŸtirmeler plana eklenmez â€” not edilir, ayrÄ± iÅŸ olur.
+Yol üstünde fark edilen ilgisiz iyileştirmeler plana eklenmez — not edilir, ayrı iş olur.

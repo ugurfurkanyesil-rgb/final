@@ -1,68 +1,68 @@
-﻿---
+---
 name: code-review
-description: Bir deÄŸiÅŸikliÄŸi birleÅŸtirmeden Ã¶nce gÃ¶zden geÃ§irmek iÃ§in kullan. PR incelemesi, "buna bir bak", "hazÄ±r mÄ±" tarzÄ± isteklerde ve kendi iÅŸini bitirmeden Ã¶nce kendini denetlerken devreye gir.
+description: Bir değişikliği birleştirmeden önce gözden geçirmek için kullan. PR incelemesi, "buna bir bak", "hazır mı" tarzı isteklerde ve kendi işini bitirmeden önce kendini denetlerken devreye gir.
 ---
 
-# Kod Ä°nceleme
+# Kod İnceleme
 
-## DuruÅŸ
+## Duruş
 
-AmaÃ§ hata bulmak deÄŸil, **kodun iddia ettiÄŸi ÅŸeyi yaptÄ±ÄŸÄ±ndan emin olmak**.
-Bulgu yoksa uydurma. Bulgu varsa yumuÅŸatma.
+Amaç hata bulmak değil, **kodun iddia ettiği şeyi yaptığından emin olmak**.
+Bulgu yoksa uydurma. Bulgu varsa yumuşatma.
 
 ## Kontrol listesi
 
-### 1. Ä°ddia â†” gerÃ§ek
-- Commit mesajÄ± / PR aÃ§Ä±klamasÄ± ne diyor, kod ne yapÄ±yor? AynÄ± mÄ±?
+### 1. İddia ↔ gerçek
+- Commit mesajı / PR açıklaması ne diyor, kod ne yapıyor? Aynı mı?
 - Yorumlar ve JSDoc kodla uyumlu mu?
-- Ä°simler davranÄ±ÅŸÄ± doÄŸru anlatÄ±yor mu? (Bir kontrolÃ¼n etiketi yaptÄ±ÄŸÄ± iÅŸi yansÄ±tÄ±yor mu?)
+- İsimler davranışı doğru anlatıyor mu? (Bir kontrolün etiketi yaptığı işi yansıtıyor mu?)
 
-### 2. DoÄŸruluk
-- UÃ§ durumlar: boÅŸ, sÄ±fÄ±r, negatif, sÄ±nÄ±r, kÃ¶ÅŸe
-- Off-by-one, satÄ±r sarmasÄ±, indeks taÅŸmasÄ±
-- Ã–lÃ§ek/birim hatalarÄ±: 0â€“1 deÄŸer yÃ¼zdeye Ã§evrilirken Ã§arpan doÄŸru mu, metre/hÃ¼cre karÄ±ÅŸmÄ±ÅŸ mÄ±
-- Hata yolu: baÅŸarÄ±sÄ±zlÄ±kta ne oluyor? Sessizce yanlÄ±ÅŸ sonuÃ§ dÃ¶nÃ¼yor mu?
+### 2. Doğruluk
+- Uç durumlar: boş, sıfır, negatif, sınır, köşe
+- Off-by-one, satır sarması, indeks taşması
+- Ölçek/birim hataları: 0–1 değer yüzdeye çevrilirken çarpan doğru mu, metre/hücre karışmış mı
+- Hata yolu: başarısızlıkta ne oluyor? Sessizce yanlış sonuç dönüyor mu?
 
-### 3. TutarlÄ±lÄ±k
-- AynÄ± kavram baÅŸka bir yerde de hesaplanÄ±yor mu? Ä°kisi aynÄ± sonucu veriyor mu?
-- Yeni kod dosyadaki mevcut kalÄ±plara uyuyor mu?
-- Tekrar eden mantÄ±k kopyalanmÄ±ÅŸ mÄ±?
+### 3. Tutarlılık
+- Aynı kavram başka bir yerde de hesaplanıyor mu? İkisi aynı sonucu veriyor mu?
+- Yeni kod dosyadaki mevcut kalıplara uyuyor mu?
+- Tekrar eden mantık kopyalanmış mı?
 
 ### 4. Kapsam
-- DeÄŸiÅŸiklik amaÃ§lanan alanÄ±n dÄ±ÅŸÄ±na taÅŸmÄ±ÅŸ mÄ±?
-- Commit'e sÄ±zmÄ±ÅŸ ilgisiz dosya var mÄ±? (editÃ¶r durum dosyalarÄ±, geÃ§ici scriptler, sonuÃ§ JSON'larÄ±)
-- Debug log'u, yorum satÄ±rÄ±na alÄ±nmÄ±ÅŸ kod, TODO kalmÄ±ÅŸ mÄ±?
+- Değişiklik amaçlanan alanın dışına taşmış mı?
+- Commit'e sızmış ilgisiz dosya var mı? (editör durum dosyaları, geçici scriptler, sonuç JSON'ları)
+- Debug log'u, yorum satırına alınmış kod, TODO kalmış mı?
 
-### 5. Ã–lÃ¼ kod
-- HesaplanÄ±p kullanÄ±lmayan deÄŸiÅŸken
-- GeÃ§irilip okunmayan parametre
-- Fonksiyonun kabul etmediÄŸi argÃ¼manla yapÄ±lan Ã§aÄŸrÄ± (sessizce yok sayÄ±lÄ±r)
-- Ãœretilip hiÃ§bir yere baÄŸlanmayan varlÄ±k
+### 5. Ölü kod
+- Hesaplanıp kullanılmayan değişken
+- Geçirilip okunmayan parametre
+- Fonksiyonun kabul etmediği argümanla yapılan çağrı (sessizce yok sayılır)
+- Üretilip hiçbir yere bağlanmayan varlık
 
-### 6. GÃ¼venlik
-- Girdi doÄŸrulamasÄ±
-- Koda gÃ¶mÃ¼lÃ¼ sÄ±r/anahtar/token
-- Yeni baÄŸÄ±mlÄ±lÄ±k: gerekli mi, bakÄ±mlÄ± mÄ±, boyutu makul mÃ¼
+### 6. Güvenlik
+- Girdi doğrulaması
+- Koda gömülü sır/anahtar/token
+- Yeni bağımlılık: gerekli mi, bakımlı mı, boyutu makul mü
 
 ### 7. Regresyon
-- Bu deÄŸiÅŸiklik hangi mevcut davranÄ±ÅŸÄ± bozabilir?
-- Proje invariant'larÄ±ndan biri ihlal ediliyor mu?
-- DoÄŸrulama gerÃ§ekten yapÄ±lmÄ±ÅŸ mÄ±, yoksa "Ã§alÄ±ÅŸÄ±yor gibi" mi?
+- Bu değişiklik hangi mevcut davranışı bozabilir?
+- Proje invariant'larından biri ihlal ediliyor mu?
+- Doğrulama gerçekten yapılmış mı, yoksa "çalışıyor gibi" mi?
 
-## SuÃ§u doÄŸru yere atmak
+## Suçu doğru yere atmak
 
-Bir sorun bildirildiÄŸinde, onu bu deÄŸiÅŸikliÄŸin sebep olduÄŸunu **varsayma.**
-`git stash` / `git show HEAD` ile deÄŸiÅŸiklik Ã¶ncesi davranÄ±ÅŸÄ± kontrol et.
-Ã–nceden var olan bir sorunu regresyon sanmak, yanlÄ±ÅŸ yerde saatler harcatÄ±r.
+Bir sorun bildirildiğinde, onu bu değişikliğin sebep olduğunu **varsayma.**
+`git stash` / `git show HEAD` ile değişiklik öncesi davranışı kontrol et.
+Önceden var olan bir sorunu regresyon sanmak, yanlış yerde saatler harcatır.
 
 ## Etkiyi derecelendir
 
-Her bulgu iÃ§in: kullanÄ±cÄ±nÄ±n gÃ¶rdÃ¼ÄŸÃ¼ sonucu mu deÄŸiÅŸtiriyor, bir kararÄ± mÄ±,
-yoksa sadece raporlanan bir sayÄ±yÄ± mÄ±? Bu ayrÄ±m Ã¶nceliÄŸi belirler.
+Her bulgu için: kullanıcının gördüğü sonucu mu değiştiriyor, bir kararı mı,
+yoksa sadece raporlanan bir sayıyı mı? Bu ayrım önceliği belirler.
 
-## Ã‡Ä±ktÄ±
+## Çıktı
 
-**Engelleyici** / **Ã–nemli** / **Ã–neri** olarak grupla.
-Her bulgu: `dosya:satÄ±r` â€” ne â€” neden â€” nasÄ±l.
+**Engelleyici** / **Önemli** / **Öneri** olarak grupla.
+Her bulgu: `dosya:satır` — ne — neden — nasıl.
 
-SonuÃ§ net olsun: onaylÄ±yor musun, yoksa dÃ¼zeltme mi bekliyorsun?
+Sonuç net olsun: onaylıyor musun, yoksa düzeltme mi bekliyorsun?

@@ -1,109 +1,109 @@
-﻿---
+---
 name: vault-sync
-description: MoonRover-Vault bilgi arÅŸivine yazmak veya oradan geÃ§miÅŸ kararlarÄ± okumak iÃ§in kullan. Bir bug bulunduÄŸunda, tasarÄ±m kararÄ± verildiÄŸinde, kalibrasyon Ã¶lÃ§Ã¼ldÃ¼ÄŸÃ¼nde ya da "bunu daha Ã¶nce konuÅŸmuÅŸ muyduk", "neden bÃ¶yle yapmÄ±ÅŸtÄ±k" sorularÄ±nda devreye gir.
+description: MoonRover-Vault bilgi arşivine yazmak veya oradan geçmiş kararları okumak için kullan. Bir bug bulunduğunda, tasarım kararı verildiğinde, kalibrasyon ölçüldüğünde ya da "bunu daha önce konuşmuş muyduk", "neden böyle yapmıştık" sorularında devreye gir.
 ---
 
-# Vault â€” Ä°ki YÃ¶nlÃ¼ Bilgi AkÄ±ÅŸÄ±
+# Vault — İki Yönlü Bilgi Akışı
 
 Vault yolu: `C:\Users\ACER\Desktop\MoonRover-Vault`
-Vault'un kendi anayasasÄ±: `MoonRover-Vault/CLAUDE.md` â€” **Ã§eliÅŸki olursa o dosya kazanÄ±r.**
+Vault'un kendi anayasası: `MoonRover-Vault/CLAUDE.md` — **çelişki olursa o dosya kazanır.**
 
-Kod deposu (`final/`) ile vault ayrÄ± yerlerdedir ve otomatik senkronize olmazlar.
-Bu skill o kÃ¶prÃ¼yÃ¼ kurar.
+Kod deposu (`final/`) ile vault ayrı yerlerdedir ve otomatik senkronize olmazlar.
+Bu skill o köprüyü kurar.
 
-Vault dizini proje dÄ±ÅŸÄ±nda olduÄŸu iÃ§in Claude Code ilk eriÅŸimde izin isteyecektir.
-"Her zaman izin ver" seÃ§ilirse sonraki oturumlarda sormaz.
+Vault dizini proje dışında olduğu için Claude Code ilk erişimde izin isteyecektir.
+"Her zaman izin ver" seçilirse sonraki oturumlarda sormaz.
 
 ---
 
-## A. OKUMA â€” plan yapmadan Ã¶nce
+## A. OKUMA — plan yapmadan önce
 
-Yeni bir iÅŸe baÅŸlarken, o konuda daha Ã¶nce alÄ±nmÄ±ÅŸ bir karar olup olmadÄ±ÄŸÄ±na bak.
-AynÄ± tartÄ±ÅŸmayÄ± ikinci kez yapmak, vault'un var olma sebebini boÅŸa Ã§Ä±karÄ±r.
+Yeni bir işe başlarken, o konuda daha önce alınmış bir karar olup olmadığına bak.
+Aynı tartışmayı ikinci kez yapmak, vault'un var olma sebebini boşa çıkarır.
 
 **Ne zaman bak:**
-- Bir modÃ¼lÃ¼ deÄŸiÅŸtirmeden Ã¶nce (`decisions/` ve `bugs/` iÃ§inde o modÃ¼l geÃ§iyor mu?)
-- "Neden bÃ¶yle yapÄ±lmÄ±ÅŸ" sorusunda
-- Bir yaklaÅŸÄ±mÄ± reddetmeden Ã¶nce â€” belki daha Ã¶nce denenmiÅŸ ve elenmiÅŸ olabilir
-- Bir bug'Ä± dÃ¼zeltmeden Ã¶nce â€” daha Ã¶nce gÃ¶rÃ¼lmÃ¼ÅŸ ve bilinÃ§li olarak bÄ±rakÄ±lmÄ±ÅŸ olabilir
+- Bir modülü değiştirmeden önce (`decisions/` ve `bugs/` içinde o modül geçiyor mu?)
+- "Neden böyle yapılmış" sorusunda
+- Bir yaklaşımı reddetmeden önce — belki daha önce denenmiş ve elenmiş olabilir
+- Bir bug'ı düzeltmeden önce — daha önce görülmüş ve bilinçli olarak bırakılmış olabilir
 
-**NasÄ±l:** `bugs/`, `decisions/`, `syntheses/` ve `index.md` iÃ§inde ilgili terimleri ara.
-BulduÄŸun kararÄ± **tarihiyle birlikte** aktar; eski bir karar hÃ¢lÃ¢ geÃ§erli olmayabilir,
-ama gÃ¶rmezden gelinmemeli.
+**Nasıl:** `bugs/`, `decisions/`, `syntheses/` ve `index.md` içinde ilgili terimleri ara.
+Bulduğun kararı **tarihiyle birlikte** aktar; eski bir karar hâlâ geçerli olmayabilir,
+ama görmezden gelinmemeli.
 
-Bir kararla Ã§eliÅŸen bir ÅŸey yapacaksan: bunu aÃ§Ä±kÃ§a sÃ¶yle ve gerekÃ§elendir.
-Sessizce eski kararÄ±n Ã¼zerinden geÃ§me.
+Bir kararla çelişen bir şey yapacaksan: bunu açıkça söyle ve gerekçelendir.
+Sessizce eski kararın üzerinden geçme.
 
 ---
 
-## B. YAZMA â€” iÅŸ bitiminde
+## B. YAZMA — iş bitiminde
 
 ### Ne gider, ne gitmez
 
-**Gider:** niyet, karar gerekÃ§esi, elenen alternatifler, kalibrasyon sayÄ±larÄ±,
-tespit edilen tutarsÄ±zlÄ±klar, "ilk Ã§Ã¶zÃ¼m neden yanlÄ±ÅŸtÄ±" dersleri, aÃ§Ä±k kalan sorular.
+**Gider:** niyet, karar gerekçesi, elenen alternatifler, kalibrasyon sayıları,
+tespit edilen tutarsızlıklar, "ilk çözüm neden yanlıştı" dersleri, açık kalan sorular.
 
-**Gitmez:** kodun kendisi (git'te zaten var), rutin refactor'lar, Ã¶nemsiz dÃ¼zeltmeler.
+**Gitmez:** kodun kendisi (git'te zaten var), rutin refactor'lar, önemsiz düzeltmeler.
 
-Ã–lÃ§Ã¼t: **koddan tÃ¼retilemeyen bilgi mi?** Cevap hayÄ±rsa yazma.
+Ölçüt: **koddan türetilemeyen bilgi mi?** Cevap hayırsa yazma.
 
-### KlasÃ¶r eÅŸlemesi
+### Klasör eşlemesi
 
-| KlasÃ¶r | Ä°Ã§erik |
+| Klasör | İçerik |
 |---|---|
-| `raw/` | Ham kaynaklar â€” **DEÄÄ°ÅTÄ°RÄ°LMEZ** |
-| `sources/` | Ham kaynaklarÄ±n Ã¶zet sayfalarÄ± |
-| `entities/` | Somut ÅŸeyler (uygulama, monorepo) |
-| `concepts/` | Kavramlar (rota modlarÄ±, terrain Ã¼retimi) |
-| `features/` | Ã–zellikler (pathfinder, heatmap, Ã¶ÄŸrenme modeli) |
-| `bugs/` | Tespit edilen sorunlar â€” Ã§Ã¶zÃ¼lmÃ¼ÅŸ veya aÃ§Ä±k |
-| `decisions/` | TasarÄ±m kararlarÄ±, `YYYY-MM-DD-konu.md` |
-| `syntheses/` | Birden Ã§ok kaynaÄŸÄ± birleÅŸtiren analizler |
-| `archive/` | Silinmeyen, emekliye ayrÄ±lan sayfalar |
+| `raw/` | Ham kaynaklar — **DEĞİŞTİRİLMEZ** |
+| `sources/` | Ham kaynakların özet sayfaları |
+| `entities/` | Somut şeyler (uygulama, monorepo) |
+| `concepts/` | Kavramlar (rota modları, terrain üretimi) |
+| `features/` | Özellikler (pathfinder, heatmap, öğrenme modeli) |
+| `bugs/` | Tespit edilen sorunlar — çözülmüş veya açık |
+| `decisions/` | Tasarım kararları, `YYYY-MM-DD-konu.md` |
+| `syntheses/` | Birden çok kaynağı birleştiren analizler |
+| `archive/` | Silinmeyen, emekliye ayrılan sayfalar |
 
 ### Hard rules (vault CLAUDE.md'den)
 
-1. `raw/` dokunulmazdÄ±r. Ä°Ã§indeki bir dosyada bug varsa onu dÃ¼zeltme â€”
-   `bugs/` altÄ±na ayrÄ± kayÄ±t aÃ§, `sources/` sayfasÄ±na Ã§eliÅŸki notu dÃ¼ÅŸ.
-2. Her iddia kaynaklÄ±dÄ±r (hangi dosya, hangi Ã¶lÃ§Ã¼m, hangi commit).
-3. Ã‡eliÅŸki silinmez, iÅŸaretlenir.
-4. Sayfa silinmez, arÅŸivlenir.
-5. Ã‡ift yÃ¶nlÃ¼ link: yeni sayfa aÃ§Ä±ldÄ±ÄŸÄ±nda ilgili sayfalardan da ona link verilir.
-6. Her iÅŸlem sonrasÄ± `index.md` ve `log.md` gÃ¼ncellenir.
+1. `raw/` dokunulmazdır. İçindeki bir dosyada bug varsa onu düzeltme —
+   `bugs/` altına ayrı kayıt aç, `sources/` sayfasına çelişki notu düş.
+2. Her iddia kaynaklıdır (hangi dosya, hangi ölçüm, hangi commit).
+3. Çelişki silinmez, işaretlenir.
+4. Sayfa silinmez, arşivlenir.
+5. Çift yönlü link: yeni sayfa açıldığında ilgili sayfalardan da ona link verilir.
+6. Her işlem sonrası `index.md` ve `log.md` güncellenir.
 
-### Bug kaydÄ± formatÄ±
+### Bug kaydı formatı
 
 ```markdown
 ---
-title: <kÄ±sa baÅŸlÄ±k>
-tags: [bug, <modÃ¼l>]
+title: <kısa başlık>
+tags: [bug, <modül>]
 date: YYYY-MM-DD
 status: resolved | open
 ---
 
 ## Belirti
-KullanÄ±cÄ±nÄ±n/testin gÃ¶rdÃ¼ÄŸÃ¼ ÅŸey.
+Kullanıcının/testin gördüğü şey.
 
-## KÃ¶k neden
-GerÃ§ek sebep â€” semptom deÄŸil.
+## Kök neden
+Gerçek sebep — semptom değil.
 
-## KanÄ±t
-Ã–lÃ§Ã¼m, test Ã§Ä±ktÄ±sÄ±, git bulgusu.
+## Kanıt
+Ölçüm, test çıktısı, git bulgusu.
 
-## Ã‡Ã¶zÃ¼m
-Ne deÄŸiÅŸti, hangi dosyada, hangi commit.
+## Çözüm
+Ne değişti, hangi dosyada, hangi commit.
 
 ## Test
-NasÄ±l doÄŸrulandÄ±, nasÄ±l tekrar doÄŸrulanÄ±r.
+Nasıl doğrulandı, nasıl tekrar doğrulanır.
 
 ## Ders
-GenelleÅŸtirilebilir Ã§Ä±karÄ±m varsa.
+Genelleştirilebilir çıkarım varsa.
 
-## Ä°lgili
+## İlgili
 - [[features/...]]
 ```
 
-### Karar kaydÄ± formatÄ±
+### Karar kaydı formatı
 
 ```markdown
 ---
@@ -113,39 +113,37 @@ date: YYYY-MM-DD
 ---
 
 ## Karar
-Tek cÃ¼mle, emir kipinde.
+Tek cümle, emir kipinde.
 
-## BaÄŸlam
-Hangi problem bu kararÄ± gerektirdi.
+## Bağlam
+Hangi problem bu kararı gerektirdi.
 
-## SeÃ§enekler
-Neler deÄŸerlendirildi, hangileri neden elendi.
+## Seçenekler
+Neler değerlendirildi, hangileri neden elendi.
 
-## SonuÃ§lar
-Bu kararÄ±n getirdiÄŸi kÄ±sÄ±tlar ve maliyetler.
+## Sonuçlar
+Bu kararın getirdiği kısıtlar ve maliyetler.
 
-## GeÃ§erlilik
-Hangi koÅŸullar deÄŸiÅŸirse bu karar gÃ¶zden geÃ§irilmeli.
+## Geçerlilik
+Hangi koşullar değişirse bu karar gözden geçirilmeli.
 ```
 
 ---
 
-## Kapsam ayrÄ±mÄ± â€” burasÄ± kritik
+## Kapsam ayrımı — burası kritik
 
-| Nereye | Ne | BiÃ§im |
+| Nereye | Ne | Biçim |
 |---|---|---|
-| `.claude/` (kod deposu) | **Kural** â€” bundan sonra hep geÃ§erli | Genel, emir kipinde, tarihsiz |
-| Vault | **Olay** â€” ne oldu, ne Ã¶ÄŸrenildi | Tarihli, gerekÃ§eli, kaynaklÄ± |
+| `.claude/` (kod deposu) | **Kural** — bundan sonra hep geçerli | Genel, emir kipinde, tarihsiz |
+| Vault | **Olay** — ne oldu, ne öğrenildi | Tarihli, gerekçeli, kaynaklı |
 
-AynÄ± bilgi ikisine de gidebilir ama farklÄ± biÃ§imde.
-Ã–rnek: vault'a "8 AÄŸustos'ta ÅŸu Ã¶lÃ§Ã¼mlerle ÅŸu karar verildi" yazÄ±lÄ±r;
-`.claude/skills/`'e "X'e dokunuyorsan Y prosedÃ¼rÃ¼nÃ¼ Ã§alÄ±ÅŸtÄ±r" yazÄ±lÄ±r.
+Aynı bilgi ikisine de gidebilir ama farklı biçimde.
+Örnek: vault'a "8 Ağustos'ta şu ölçümlerle şu karar verildi" yazılır;
+`.claude/skills/`'e "X'e dokunuyorsan Y prosedürünü çalıştır" yazılır.
 
-Kural deÄŸiÅŸikliÄŸi gerekiyorsa `retro` skill'ine geÃ§ â€” bu skill sadece vault'u yÃ¶netir.
+Kural değişikliği gerekiyorsa `retro` skill'ine geç — bu skill sadece vault'u yönetir.
 
 ## Bitirirken
 
-Commit atmadan önce `git status` ile vault'un çalışma ağacını kontrol et. Bu oturumun kapsamındaki dosyaların dışında commit edilmemiş değişiklik/dosya varsa (önceki bir oturumdan kalmış olabilir), onları da commit'e dahil et — sessizce atlama. Commit mesajında hangi kısmın bu oturuma, hangisinin backlog'a ait olduğunu ayır.
-
-Vault'ta commit at. Vault'un kendi git deposu var, kod deposundan baÄŸÄ±msÄ±z.
-`.obsidian/workspace.json` gibi editÃ¶r durum dosyalarÄ±nÄ± commit'e katma.
+Vault'ta commit at. Vault'un kendi git deposu var, kod deposundan bağımsız.
+`.obsidian/workspace.json` gibi editör durum dosyalarını commit'e katma.

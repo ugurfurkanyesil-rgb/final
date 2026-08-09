@@ -1,72 +1,72 @@
-﻿---
+---
 name: debug
-description: Bir ÅŸey beklendiÄŸi gibi Ã§alÄ±ÅŸmadÄ±ÄŸÄ±nda sistematik teÅŸhis iÃ§in kullan. Hata mesajÄ±, gÃ¶rsel artefakt, yanlÄ±ÅŸ sayÄ±, "Ã¶nce Ã§alÄ±ÅŸÄ±yordu ÅŸimdi Ã§alÄ±ÅŸmÄ±yor" durumlarÄ±nda devreye gir.
+description: Bir şey beklendiği gibi çalışmadığında sistematik teşhis için kullan. Hata mesajı, görsel artefakt, yanlış sayı, "önce çalışıyordu şimdi çalışmıyor" durumlarında devreye gir.
 ---
 
-# Sistematik Hata AyÄ±klama
+# Sistematik Hata Ayıklama
 
-## AltÄ±n kural
+## Altın kural
 
-**Semptomu deÄŸil, kÃ¶k nedeni dÃ¼zelt.** Ekranda yanlÄ±ÅŸ sayÄ± gÃ¶rÃ¼nÃ¼yorsa, sayÄ±yÄ± dÃ¼zeltmek
-Ã§Ã¶zÃ¼m deÄŸildir â€” o sayÄ±nÄ±n neden yanlÄ±ÅŸ hesaplandÄ±ÄŸÄ±nÄ± bul.
+**Semptomu değil, kök nedeni düzelt.** Ekranda yanlış sayı görünüyorsa, sayıyı düzeltmek
+çözüm değildir — o sayının neden yanlış hesaplandığını bul.
 
-Ä°kinci kural: **tahmin etme, Ã¶lÃ§.** Her hipotez bir deneyle elenir ya da doÄŸrulanÄ±r.
+İkinci kural: **tahmin etme, ölç.** Her hipotez bir deneyle elenir ya da doğrulanır.
 
-## SÄ±ra
+## Sıra
 
-### 1. Yeniden Ã¼ret
-Sorunu gÃ¼venilir ÅŸekilde tekrar Ã¼retemiyorsan, dÃ¼zelttiÄŸini de doÄŸrulayamazsÄ±n.
-En kÃ¼Ã§Ã¼k tekrarlanabilir senaryoyu bul.
+### 1. Yeniden üret
+Sorunu güvenilir şekilde tekrar üretemiyorsan, düzelttiğini de doğrulayamazsın.
+En küçük tekrarlanabilir senaryoyu bul.
 
-### 2. DeÄŸiÅŸikliÄŸi izole et â€” regresyon mu?
-"Ã–nce Ã§alÄ±ÅŸÄ±yordu" deniyorsa **bunu doÄŸrula, varsayma:**
+### 2. Değişikliği izole et — regresyon mu?
+"Önce çalışıyordu" deniyorsa **bunu doğrula, varsayma:**
 ```
-git stash          # deÄŸiÅŸiklikleri geÃ§ici kaldÄ±r
-# senaryoyu tekrar Ã§alÄ±ÅŸtÄ±r
+git stash          # değişiklikleri geçici kaldır
+# senaryoyu tekrar çalıştır
 git stash pop
 ```
-veya `git show HEAD:<dosya>` ile Ã¶nceki hÃ¢li karÅŸÄ±laÅŸtÄ±r.
+veya `git show HEAD:<dosya>` ile önceki hâli karşılaştır.
 
-Sorun eski kodda da varsa, bu bir regresyon deÄŸildir â€” suÃ§u son deÄŸiÅŸikliÄŸe atma.
-Bu adÄ±m atlanÄ±nca yanlÄ±ÅŸ yerde saatler harcanÄ±r.
+Sorun eski kodda da varsa, bu bir regresyon değildir — suçu son değişikliğe atma.
+Bu adım atlanınca yanlış yerde saatler harcanır.
 
-### 3. DeÄŸiÅŸiklik hedefe ulaÅŸÄ±yor mu?
-Kod dÃ¼zeltildi ama davranÄ±ÅŸ aynÄ±ysa, Ã¶nce ÅŸunu ele:
-- Sunucu/derleyici gerÃ§ekten yeni kodu mu servis ediyor? (`curl` ile diskteki dosyayla karÅŸÄ±laÅŸtÄ±r)
-- Birden fazla sÃ¼reÃ§ mi Ã§alÄ±ÅŸÄ±yor? Port karÄ±ÅŸÄ±klÄ±ÄŸÄ± var mÄ±?
-- Cache/HMR yakalamÄ±ÅŸ mÄ±? Sert yenileme yapÄ±ldÄ± mÄ±?
-- DoÄŸru dosyaya mÄ± bakÄ±yorsun? (aynÄ± isimli iki dosya, kopya klasÃ¶r)
+### 3. Değişiklik hedefe ulaşıyor mu?
+Kod düzeltildi ama davranış aynıysa, önce şunu ele:
+- Sunucu/derleyici gerçekten yeni kodu mu servis ediyor? (`curl` ile diskteki dosyayla karşılaştır)
+- Birden fazla süreç mi çalışıyor? Port karışıklığı var mı?
+- Cache/HMR yakalamış mı? Sert yenileme yapıldı mı?
+- Doğru dosyaya mı bakıyorsun? (aynı isimli iki dosya, kopya klasör)
 
-Bu, "kodda hata yok ama davranÄ±ÅŸ deÄŸiÅŸmiyor" durumlarÄ±nÄ±n en sÄ±k sebebidir.
+Bu, "kodda hata yok ama davranış değişmiyor" durumlarının en sık sebebidir.
 
-### 4. Ãœretilen ÅŸey kullanÄ±lÄ±yor mu?
-Bir deÄŸer/varlÄ±k Ã¼retiliyor ama hiÃ§bir tÃ¼keticiye baÄŸlanmamÄ±ÅŸ olabilir.
-Ãœretim fonksiyonunda ne yaparsan yap sonuÃ§ deÄŸiÅŸmez.
-`grep` ile: bu deÄŸeri kim okuyor? GerÃ§ekten bir yere gidiyor mu?
+### 4. Üretilen şey kullanılıyor mu?
+Bir değer/varlık üretiliyor ama hiçbir tüketiciye bağlanmamış olabilir.
+Üretim fonksiyonunda ne yaparsan yap sonuç değişmez.
+`grep` ile: bu değeri kim okuyor? Gerçekten bir yere gidiyor mu?
 
-### 5. Ä°kiye bÃ¶lerek daralt
-Sorunun hangi katmanda olduÄŸunu ikiye bÃ¶lerek bul: veri mi, hesap mÄ±, sunum mu?
-Her katmanÄ±n Ã§Ä±ktÄ±sÄ±nÄ± ayrÄ± ayrÄ± incele. `git bisect` uzun geÃ§miÅŸlerde iÅŸe yarar.
+### 5. İkiye bölerek daralt
+Sorunun hangi katmanda olduğunu ikiye bölerek bul: veri mi, hesap mı, sunum mu?
+Her katmanın çıktısını ayrı ayrı incele. `git bisect` uzun geçmişlerde işe yarar.
 
 ### 6. Hipotezi test et
-Her hipotez iÃ§in: bu doÄŸruysa **ne gÃ¶zlemlemeliyim?**
-KÃ¼Ã§Ã¼k, izole bir deney kur (mini grid, tek fonksiyon Ã§aÄŸrÄ±sÄ±, baÄŸÄ±msÄ±z render).
-GÃ¶zlem hipotezle uyuÅŸmuyorsa hipotezi bÄ±rak â€” zorlama.
+Her hipotez için: bu doğruysa **ne gözlemlemeliyim?**
+Küçük, izole bir deney kur (mini grid, tek fonksiyon çağrısı, bağımsız render).
+Gözlem hipotezle uyuşmuyorsa hipotezi bırak — zorlama.
 
-### 7. KÃ¶k nedeni doÄŸrula
-DÃ¼zeltmeden Ã¶nce aÃ§Ä±klaman **tÃ¼m** semptomlarÄ± aÃ§Ä±klÄ±yor mu?
-Bir kÄ±smÄ±nÄ± aÃ§Ä±klÄ±yorsa muhtemelen iki ayrÄ± sorun var, ya da yanlÄ±ÅŸ nedeni buldun.
+### 7. Kök nedeni doğrula
+Düzeltmeden önce açıklaman **tüm** semptomları açıklıyor mu?
+Bir kısmını açıklıyorsa muhtemelen iki ayrı sorun var, ya da yanlış nedeni buldun.
 
-## YaygÄ±n yanÄ±lgÄ±lar
+## Yaygın yanılgılar
 
-- **"Ä°statistik testi geÃ§ti, demek ki doÄŸru."** SayÄ±sal test gÃ¶rsel/davranÄ±ÅŸsal doÄŸruluÄŸu
-  garanti etmez. GerÃ§ek Ã§Ä±ktÄ±ya bak.
-- **"Hipotezim mantÄ±klÄ±, muhtemelen budur."** Ã–lÃ§meden geÃ§me.
-- **"DÃ¼zelttim, bitti."** Kendi dÃ¼zeltmen yeni bir bug getirebilir; dÃ¼zeltmeyi de test et.
-- **"Yorum bÃ¶yle diyor."** Yorum yanlÄ±ÅŸ olabilir. Kod ne yapÄ±yor, ona bak.
+- **"İstatistik testi geçti, demek ki doğru."** Sayısal test görsel/davranışsal doğruluğu
+  garanti etmez. Gerçek çıktıya bak.
+- **"Hipotezim mantıklı, muhtemelen budur."** Ölçmeden geçme.
+- **"Düzelttim, bitti."** Kendi düzeltmen yeni bir bug getirebilir; düzeltmeyi de test et.
+- **"Yorum böyle diyor."** Yorum yanlış olabilir. Kod ne yapıyor, ona bak.
 
 ## Bulunca
 
-KÃ¶k nedeni, kanÄ±tÄ± ve dÃ¼zeltmeyi birlikte belgele.
-AynÄ± sÄ±nÄ±ftan baÅŸka yerlerde de aynÄ± hata var mÄ± â€” bir kez bakmaya deÄŸer.
-GenelleÅŸtirilebilir bir ders varsa yaz; bir dahakine aranan yer orasÄ± olur.
+Kök nedeni, kanıtı ve düzeltmeyi birlikte belgele.
+Aynı sınıftan başka yerlerde de aynı hata var mı — bir kez bakmaya değer.
+Genelleştirilebilir bir ders varsa yaz; bir dahakine aranan yer orası olur.

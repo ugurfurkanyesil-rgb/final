@@ -1,23 +1,23 @@
-﻿---
-description: Vault'ta geÃ§miÅŸ karar/bulgu ara â€” bir iÅŸe baÅŸlamadan Ã¶nce
+---
+description: Vault'ta geçmiş karar/bulgu ara — bir işe başlamadan önce
 ---
 
-`C:\Users\ACER\Desktop\MoonRover-Vault` iÃ§inde ÅŸu konuyu ara: **$ARGUMENTS**
+`C:\Users\ACER\Desktop\MoonRover-Vault` içinde şu konuyu ara: **$ARGUMENTS**
 
-`vault-sync` skill'inin OKUMA bÃ¶lÃ¼mÃ¼nÃ¼ uygula.
+`vault-sync` skill'inin OKUMA bölümünü uygula.
 
 Aranacak yerler: `decisions/`, `bugs/`, `syntheses/`, `features/`, `concepts/`, `index.md`.
 
 ## Rapor
 
-BulduklarÄ±nÄ± ÅŸÃ¶yle sun:
+Bulduklarını şöyle sun:
 
-- **Ä°lgili kararlar** â€” tarih + karar + hÃ¢lÃ¢ geÃ§erli gÃ¶rÃ¼nÃ¼yor mu
-- **Ä°lgili bulgular** â€” bug/tutarsÄ±zlÄ±k, Ã§Ã¶zÃ¼lmÃ¼ÅŸ mÃ¼ aÃ§Ä±k mÄ±
-- **Elenen alternatifler** â€” daha Ã¶nce denenip vazgeÃ§ilen bir yaklaÅŸÄ±m varsa, neden vazgeÃ§ildiÄŸi
-- **AÃ§Ä±k sorular** â€” bu konuda vault'ta cevaplanmamÄ±ÅŸ bir ÅŸey kalmÄ±ÅŸ mÄ±
+- **İlgili kararlar** — tarih + karar + hâlâ geçerli görünüyor mu
+- **İlgili bulgular** — bug/tutarsızlık, çözülmüş mü açık mı
+- **Elenen alternatifler** — daha önce denenip vazgeçilen bir yaklaşım varsa, neden vazgeçildiği
+- **Açık sorular** — bu konuda vault'ta cevaplanmamış bir şey kalmış mı
 
-HiÃ§bir ÅŸey bulamazsan bunu aÃ§Ä±kÃ§a sÃ¶yle â€” "kayÄ±t yok" da bir bilgidir,
-uydurma baÄŸlantÄ± kurmaktan iyidir.
+Hiçbir şey bulamazsan bunu açıkça söyle — "kayıt yok" da bir bilgidir,
+uydurma bağlantı kurmaktan iyidir.
 
-BulduÄŸun bir kararla Ã§eliÅŸen bir ÅŸey yapÄ±lacaksa, bunu belirt ve gerekÃ§e iste.
+Bulduğun bir kararla çelişen bir şey yapılacaksa, bunu belirt ve gerekçe iste.
