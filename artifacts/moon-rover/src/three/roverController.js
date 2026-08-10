@@ -211,7 +211,7 @@ export function useRoverController(roverRef, setRoverState, pathRef, activeRoute
       const dh = last ? Math.abs(ty - (last[1] - ROVER_Y_OFF)) : 0;
       const ds = last ? Math.sqrt((nx - last[0]) ** 2 + (nz - last[2]) ** 2) : 1;
       const slope = ds > 0.01 ? dh / ds : 0;
-      learningModel.recordTraversal(nx, nz, learningModel.computeDifficulty(Math.abs(vel), slope, 0));
+      learningModel.recordTraversal(nx, nz, learningModel.computeDifficulty(slope, 0));
     }
 
     setRoverState({

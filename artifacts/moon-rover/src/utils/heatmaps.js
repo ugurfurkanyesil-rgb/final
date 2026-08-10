@@ -4,6 +4,7 @@
  */
 
 import { GRID_RES, TERRAIN_SIZE, buildHeightMap, buildSlopeMap, buildCraterMask, CRATERS } from '../three/terrainGenerator.js';
+import { buildIlluminationMap } from './pathfinder.js';
 
 // Thermal color scale: blue→cyan→green→yellow→red
 function thermalColor(t) {
@@ -46,7 +47,7 @@ function ensureMaps() {
   if (!_heightMap) {
     _heightMap = buildHeightMap();
     _slopeMap = buildSlopeMap(_heightMap);
-    _craterMask = buildCraterMask(1.0);
+    _craterMask = buildCraterMask();
   }
 }
 
@@ -55,11 +56,11 @@ export function getSlopeMap() { ensureMaps(); return _slopeMap; }
 export function getCraterMask() { ensureMaps(); return _craterMask; }
 
 /** Draw a heatmap to a canvas element (also exported as generateHeatmapCanvas for compatibility) */
-export function generateHeatmapCanvas(canvas, type, slopeMapOverride, craterMaskOverride, hMapOverride, sunAngle, experienceMap) {
-  return drawHeatmap(canvas, type, experienceMap);
+export function generateHeatmapCanvas(canvas, type, sunAngle, experienceMap) {
+  return drawHeatmap(canvas, type, experienceMap, sunAngle);
 }
 
-export function drawHeatmap(canvas, type, experienceMap) {
+export function drawHeatmap(canvas, type, experienceMap, sunAngle = 45) {
   ensureMaps();
   const ctx = canvas.getContext('2d');
   const W = canvas.width;
@@ -111,20 +112,9 @@ export function drawHeatmap(canvas, type, experienceMap) {
       break;
     }
     case 'Illumination': {
-      // Simulate sun from NE direction — slopes facing away are darker
-      paramMap = new Float32Array(GRID_RES * GRID_RES);
-      const sunX = 0.707, sunZ = -0.707;
-      for (let row = 1; row < GRID_RES - 1; row++) {
-        for (let col = 1; col < GRID_RES - 1; col++) {
-          const dX = (_heightMap[row*GRID_RES+col+1] - _heightMap[row*GRID_RES+col-1]);
-          const dZ = (_heightMap[(row+1)*GRID_RES+col] - _heightMap[(row-1)*GRID_RES+col]);
-          // Dot product of surface normal with sun direction
-          const nx = -dX, ny = 2.0, nz = -dZ;
-          const len = Math.sqrt(nx*nx + ny*ny + nz*nz);
-          const illum = Math.max(0, (nx/len * sunX + ny/len * 0.5 + nz/len * sunZ));
-          paramMap[row * GRID_RES + col] = illum;
-        }
-      }
+      // Same sun-direction model used for route illumination costing (pathfinder.js),
+      // so this view reflects the actual sun angle set via the sun dial.
+      paramMap = buildIlluminationMap(sunAngle, _heightMap);
       maxVal = 1;
       break;
     }

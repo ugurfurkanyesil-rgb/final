@@ -39,7 +39,7 @@ export class LearningModel {
     if (this.traversalCount % 50 === 0) clearPathCache();
   }
 
-  computeDifficulty(speed, slope, craterDanger) {
+  computeDifficulty(slope, craterDanger) {
     return Math.min(1, Math.min(slope / 0.8, 1.0) * 0.5 + craterDanger * 0.5);
   }
 

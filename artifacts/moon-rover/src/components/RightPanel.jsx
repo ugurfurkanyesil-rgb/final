@@ -318,7 +318,7 @@ function RouteAnalysis({ routes, activeRoute, onSelect }) {
 }
 
 // ---- Heatmap ----
-function HeatmapViewer({ slopeMap, craterMask, hMap, sunAngle, learningModel }) {
+function HeatmapViewer({ sunAngle, learningModel }) {
   const ref=useRef(null);
   const [sel,setSel]=useState('Hazard Score');
   const [open,setOpen]=useState(false);
@@ -333,8 +333,8 @@ function HeatmapViewer({ slopeMap, craterMask, hMap, sunAngle, learningModel }) 
   useEffect(()=>{
     if (!ref.current) return;
     const experienceMap = sel === 'Experience' ? learningModel?.getExperienceMap?.() : undefined;
-    generateHeatmapCanvas(ref.current,sel,slopeMap,craterMask,hMap,sunAngle,experienceMap);
-  }, [sel,slopeMap,craterMask,hMap,sunAngle,tick,learningModel]);
+    generateHeatmapCanvas(ref.current,sel,sunAngle,experienceMap);
+  }, [sel,sunAngle,tick,learningModel]);
   return (
     <div>
       <Label>Parameter Heatmap</Label>
@@ -901,7 +901,7 @@ export default function RightPanel({
         </Sect>
 
         {/* Heatmap */}
-        <HeatmapViewer slopeMap={slopeMap} craterMask={craterMask} hMap={hMap} sunAngle={sunAngleDeg} learningModel={learningModel}/>
+        <HeatmapViewer sunAngle={sunAngleDeg} learningModel={learningModel}/>
 
         {/* Image processing proof panel */}
         <ProcessingMapPreview
