@@ -646,7 +646,7 @@ export default function RightPanel({
   onStartRover, onStopRover, isRoving,
   slopeMap, craterMask, hMap,
   learningModel, routeLog, showToast,
-  dustMode, dustHazard, cameraSignalLost, cameraSignalQuality, onReturnToHome, onDustPlaced, onClearDustHazard,
+  dustMode, dustHazard, cameraSignalLost, cameraSignalQuality, onTriggerDustHazard, onDustPlaced, onClearDustHazard,
 }) {
   const [pickMode, setPickMode] = useState(false);
   const [shareLabel, setShareLabel] = useState('SHARE LINK');
@@ -848,8 +848,13 @@ export default function RightPanel({
             </div>
           )}
 
-          {/* Return To Home button */}
-          <button onClick={onReturnToHome} style={{
+          {/* Dust-hazard trigger button — arms/cancels PLACEMENT mode so the
+              user can click the map to drop a hazard; it does NOT drive the
+              rover home itself. That's why the idle label says "SIMULATE
+              DUST HAZARD" rather than "RETURN TO HOME" — the actual return
+              drive is auto-triggered later, once the placed hazard causes
+              sensor interference (see startReturnToHome() in App.jsx). */}
+          <button onClick={onTriggerDustHazard} style={{
             width:'100%',padding:'6px 0',fontSize:9,fontFamily:'monospace',fontWeight:'bold',
             letterSpacing:0.7,cursor:'pointer',borderRadius:3,marginBottom:4,
             background: dustPickMode
@@ -863,7 +868,7 @@ export default function RightPanel({
             boxShadow: dustPickMode ? '0 0 8px rgba(255,140,0,0.4)' : 'none',
           }}>
             <span style={{fontSize:11}}>☁</span>
-            {dustPickMode ? '● PLACING DUST… (CANCEL)' : 'RETURN TO HOME'}
+            {dustPickMode ? '● PLACING DUST… (CANCEL)' : '☁ SIMULATE DUST HAZARD'}
           </button>
 
           {dustHazard && (

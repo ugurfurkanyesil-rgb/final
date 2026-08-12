@@ -36,6 +36,7 @@ function Terrain({ wireframe }) {
           key="proc"
           vertexColors
           color="#ffffff"
+          map={_regolithTex}
           normalMap={_normalMap}
           normalScale={[0.14, 0.14]}
           roughness={0.88}

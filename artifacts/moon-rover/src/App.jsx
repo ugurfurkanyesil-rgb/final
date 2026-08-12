@@ -221,7 +221,7 @@ export default function App() {
     setTimeout(() => {
       try {
         const { sm: sm2, cm: cm2, hm: hm2 } = getMaps();
-        const planned = planAllRoutes(waypoints, sm2, cm2, hm2, sunAngleDeg);
+        const planned = planAllRoutes(waypoints, sm2, cm2, hm2, sunAngleDeg, learningModel.getExperienceMap());
         setRoutes(planned);
         pathRef.current = {
           ...pathRef.current,
@@ -240,7 +240,7 @@ export default function App() {
         showToast(`Path planning failed: ${err.message}`, 'error');
       }
     }, 30);
-  }, [waypoints, getMaps, sunAngleDeg, showToast, addLog]);
+  }, [waypoints, getMaps, sunAngleDeg, showToast, addLog, learningModel]);
 
   // ---- Rover control ----
   const handleStartRover = useCallback(() => {
@@ -272,7 +272,12 @@ export default function App() {
   }, [roverState.autoMode]);
 
   // ---- Dust Hazard: delayed Return To Home ----
-  const handleReturnToHome = useCallback(() => {
+  // This only arms/cancels dust-hazard PLACEMENT mode — it never drives the
+  // rover home itself. The actual return-to-home drive is startReturnToHome()
+  // below, auto-triggered once a placed hazard causes sensor interference.
+  // Named for what it does (not "handleReturnToHome") so the RightPanel
+  // button wired to it isn't mislabeled as an immediate "go home" action.
+  const handleTriggerDustHazard = useCallback(() => {
     if (dustMode === DUST_STATES.PLACEMENT) {
       setDustMode(dustHazard ? DUST_STATES.PRESENT : DUST_STATES.NORMAL);
       addLog('Dust placement cancelled.');
@@ -319,7 +324,7 @@ export default function App() {
       const roverPos = { x: roverState.x, z: roverState.z };
       try {
         const maps = getMaps();
-        const returnPath = buildReturnToHomePath(roverPos, home, maps, sunAngleDeg);
+        const returnPath = buildReturnToHomePath(roverPos, home, maps, sunAngleDeg, learningModel.getExperienceMap());
         if (!returnPath || returnPath.length < 2) {
           throw new Error('No valid return path available');
         }
@@ -339,7 +344,7 @@ export default function App() {
         showToast('Return To Home path unavailable. Rover remains in safe STOPPED state.', 'error', 7000);
       }
     }, 260);
-  }, [addLog, showToast, roverState.x, roverState.y, roverState.z, getMaps, sunAngleDeg, activeRoute]);
+  }, [addLog, showToast, roverState.x, roverState.y, roverState.z, getMaps, sunAngleDeg, activeRoute, learningModel]);
 
   // Continuous hazard monitoring: evaluated every navigation update via roverState changes.
   useEffect(() => {
@@ -525,7 +530,7 @@ export default function App() {
         dustHazard={dustHazard}
         cameraSignalLost={cameraSignalLost}
         cameraSignalQuality={cameraSignalQuality}
-        onReturnToHome={handleReturnToHome}
+        onTriggerDustHazard={handleTriggerDustHazard}
         onDustPlaced={handleDustPlaced}
         onClearDustHazard={handleClearDustHazard}
       />

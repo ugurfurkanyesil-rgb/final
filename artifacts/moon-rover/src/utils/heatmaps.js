@@ -4,7 +4,7 @@
  */
 
 import { GRID_RES, TERRAIN_SIZE, buildHeightMap, buildSlopeMap, buildCraterMask, CRATERS } from '../three/terrainGenerator.js';
-import { buildIlluminationMap } from './pathfinder.js';
+import { buildIlluminationMap, hazardScore } from './pathfinder.js';
 
 // Thermal color scale: blue→cyan→green→yellow→red
 function thermalColor(t) {
@@ -119,11 +119,11 @@ export function drawHeatmap(canvas, type, experienceMap, sunAngle = 45) {
       break;
     }
     case 'Hazard Score': {
+      // Uses the same hazardScore() as getHazardAtPoint / route stats, so this
+      // heatmap matches what actually gates waypoint placement and routing.
       paramMap = new Float32Array(GRID_RES * GRID_RES);
       for (let i = 0; i < GRID_RES * GRID_RES; i++) {
-        const s = Math.min(1, _slopeMap[i] / 0.6);
-        const c = _craterMask[i];
-        paramMap[i] = Math.min(1, s * 0.4 + c * 0.6);
+        paramMap[i] = hazardScore(_craterMask[i], _slopeMap[i]);
       }
       maxVal = 1;
       break;
@@ -131,9 +131,7 @@ export function drawHeatmap(canvas, type, experienceMap, sunAngle = 45) {
     case 'Traversability': {
       paramMap = new Float32Array(GRID_RES * GRID_RES);
       for (let i = 0; i < GRID_RES * GRID_RES; i++) {
-        const s = Math.min(1, _slopeMap[i] / 0.6);
-        const c = _craterMask[i];
-        paramMap[i] = 1 - Math.min(1, s * 0.4 + c * 0.6);
+        paramMap[i] = 1 - hazardScore(_craterMask[i], _slopeMap[i]);
       }
       maxVal = 1;
       break;

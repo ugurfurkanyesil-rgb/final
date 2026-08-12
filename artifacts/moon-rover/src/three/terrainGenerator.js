@@ -40,21 +40,68 @@ export const CRATERS = [
   { x:  48, z:  30, radius:  4,   depth: 1.2,  rimH: 0.46, rimW: 0.33 },
 ];
 
-// ─── Multi-octave fractal noise (sin/cos basis, deterministic) ──────────────
+// ─── Multi-octave fractal noise (hash-based value noise, deterministic) ─────
 // Mimics LRO LOLA-derived elevation fractals at three wavelength bands.
+//
+// Was previously a sum of sin(wx·f)·cos(wz·f) products — the exact same
+// basis createLunarRegolithTexture() used to have, and it has the same
+// flaw: a product of axis-aligned sinusoids always resolves into a regular
+// diagonal interference lattice (confirmed visually: the vertex-colour
+// slope-shading this height field drives showed an unmistakable plaid
+// pattern even from a straight-down camera, since it's a property of the
+// height field's geometry/gradient, not a texture-minification artifact).
+// Replaced with the same seamless-value-noise approach as the regolith
+// texture (see regolithHash/seamlessValueNoise below), just WITHOUT their
+// toroidal wraparound — the terrain is a single fixed -50..50m sheet that's
+// never tiled/repeated, so plain (non-wrapping) value noise over continuous
+// world coordinates is already gap-free everywhere; no seam to guard against.
+function terrainHash(ix, iy, seed) {
+  const s = Math.sin(ix * 127.1 + iy * 311.7 + seed * 74.7) * 43758.5453123;
+  return s - Math.floor(s);
+}
+function valueNoise2D(x, y, seed) {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const sx = x - x0, sy = y - y0;
+  const fx = sx * sx * (3 - 2 * sx), fy = sy * sy * (3 - 2 * sy);
+  const n00 = terrainHash(x0,     y0,     seed);
+  const n10 = terrainHash(x0 + 1, y0,     seed);
+  const n01 = terrainHash(x0,     y0 + 1, seed);
+  const n11 = terrainHash(x0 + 1, y0 + 1, seed);
+  const nx0 = n00 + fx * (n10 - n00);
+  const nx1 = n01 + fx * (n11 - n01);
+  return nx0 + fy * (nx1 - nx0); // in [0,1)
+}
+
+// cellSize is in metres (world space): 50m/25m highland swells down to 3m
+// fine roughness, same "highlands → meso → micro" band progression the old
+// sin/cos comments claimed. Amplitudes are calibrated on TWO targets, not
+// just one — matching height stdev alone (as a first pass did) let slope
+// come out ~2x too steep, because value noise's gradient-per-unit-height-
+// amplitude isn't the same as a sum-of-sines' at a given wavelength:
+//   1) lunarFBM's own standalone height stdev ≈ old implementation's
+//      (0.68 vs 0.68, sampled over the full terrain)
+//   2) buildSlopeMap()'s mean slope ≈ old implementation's (0.101 vs 0.101,
+//      central-difference over the real GRID_RES grid) — THIS is what
+//      pathfinder.js's slope/hazard/cost actually consume, so it's the one
+//      that matters for routing behaviour, not raw height amplitude.
+// Persistence ~0.51 (each octave ~half the amplitude of the last) is a
+// standard, non-extreme fBm falloff — every octave contributes visible
+// detail, unlike an earlier attempt that needed persistence 0.1 (fine
+// octaves basically zeroed out) to hit the slope target at a smaller base
+// cell size. See bugs/ page for the calibration measurements.
+const LUNAR_FBM_OCTAVES = [
+  { cellSize: 50, amp: 4.62, seed: 1.1 },  // long-wavelength highland swells
+  { cellSize: 25, amp: 2.36, seed: 2.7 },  // mid-scale undulation
+  { cellSize: 12, amp: 1.20, seed: 4.3 },
+  { cellSize: 6,  amp: 0.61, seed: 6.6 },  // fine-scale roughness
+  { cellSize: 3,  amp: 0.31, seed: 8.9 },  // regolith gardening micro-texture
+];
+
 function lunarFBM(wx, wz) {
-  // Long-wavelength highland swells (~30 m)
   let h = 0;
-  h += Math.sin(wx * 0.072 + 1.17) * Math.cos(wz * 0.081 + 2.35) * 0.90;
-  h += Math.sin(wx * 0.061 + 4.40) * Math.cos(wz * 0.058 + 0.71) * 0.70;
-  // Mid-scale undulation (~8 m)
-  h += Math.sin(wx * 0.190 + 3.72) * Math.cos(wz * 0.210 + 1.43) * 0.35;
-  h += Math.sin(wx * 0.245 + 0.88) * Math.cos(wz * 0.175 + 5.10) * 0.28;
-  h += Math.sin((wx + wz) * 0.155 + 2.61) * 0.22;
-  // Fine-scale roughness (~2 m) — regolith gardening texture
-  h += Math.sin(wx * 0.520 + 1.95) * Math.cos(wz * 0.470 + 3.80) * 0.10;
-  h += Math.sin(wx * 0.780 + 0.33) * Math.cos(wz * 0.840 + 4.55) * 0.06;
-  h += Math.sin(wx * 1.350 + 5.70) * Math.cos(wz * 1.220 + 2.20) * 0.03;
+  for (const o of LUNAR_FBM_OCTAVES) {
+    h += (valueNoise2D(wx / o.cellSize, wz / o.cellSize, o.seed) - 0.5) * o.amp;
+  }
   return h;
 }
 
@@ -111,11 +158,61 @@ function craterColourBias(wx, wz) {
   return Math.max(-0.42, Math.min(0.42, bias));
 }
 
+// Deterministic hash → pseudo-random float in [0,1) for an integer lattice
+// point. Still sin-based (keeps this generator in the same trig-only,
+// no-external-noise-lib spirit as the rest of the file), but critically
+// UNCORRELATED between neighboring lattice cells — unlike a plain
+// sin(x)·cos(y) product (or a small sum of oriented sine gratings), which
+// is a smooth deterministic wave and therefore always resolves into a
+// regular interference pattern (plaid grid / parallel bands) once you tile
+// and view it at an angle. A hash has no such structure to alias into.
+function regolithHash(ix, iy, seed) {
+  const s = Math.sin(ix * 127.1 + iy * 311.7 + seed * 74.7) * 43758.5453123;
+  return s - Math.floor(s);
+}
+
+// Seamless bilinear value noise on a `cells`×`cells` toroidal lattice: (u,v)
+// are in lattice-cell units (0..cells), and lattice indices are wrapped mod
+// `cells` before hashing, so the lattice point at u=cells is IDENTICAL to
+// the one at u=0 — the noise is then exactly periodic with period `cells`,
+// which is what makes RepeatWrapping tile with no visible seam. Smoothstep
+// interpolation between the 4 surrounding lattice corners avoids the blocky
+// look of raw nearest-neighbour lattice noise.
+function seamlessValueNoise(u, v, cells, seed) {
+  const x0 = Math.floor(u), y0 = Math.floor(v);
+  const sx = u - x0, sy = v - y0;
+  const fx = sx * sx * (3 - 2 * sx), fy = sy * sy * (3 - 2 * sy);
+  const wrap = n => ((n % cells) + cells) % cells;
+  const n00 = regolithHash(wrap(x0),     wrap(y0),     seed);
+  const n10 = regolithHash(wrap(x0 + 1), wrap(y0),     seed);
+  const n01 = regolithHash(wrap(x0),     wrap(y0 + 1), seed);
+  const n11 = regolithHash(wrap(x0 + 1), wrap(y0 + 1), seed);
+  const nx0 = n00 + fx * (n10 - n00);
+  const nx1 = n01 + fx * (n11 - n01);
+  return nx0 + fy * (nx1 - nx0); // in [0,1)
+}
+
+// Cell counts double roughly ~2.2× per octave (7→19→43→89→181→359, same
+// scale progression the old sin-grain used), amplitude roughly halving —
+// coarse octaves dominate the blotchy shape, fine ones just add grain.
+const REGOLITH_OCTAVES = [
+  { cells: 7,   amp: 32,  seed: 1.1 },  // coarse
+  { cells: 19,  amp: 18,  seed: 2.7 },  // medium
+  { cells: 43,  amp: 10,  seed: 4.3 },  // fine
+  { cells: 89,  amp: 5,   seed: 6.6 },  // very fine
+  { cells: 181, amp: 2.5, seed: 8.9 },  // micro
+  { cells: 359, amp: 1.3, seed: 3.5 },  // ultra fine
+];
+
 // ─── Canvas texture factories ────────────────────────────────────────────────
 /**
  * Procedural lunar regolith colour texture.
- * Multi-frequency sin/cos grain — matches LRO LROC NAC surface appearance.
- * Tiled 16× across the terrain (each tile ≈ 6.25 m).
+ * Multi-octave seamless value noise (see REGOLITH_OCTAVES/seamlessValueNoise
+ * above) — organic blotchy grain, matches LRO LROC NAC surface appearance.
+ * (A naive sin(x)·cos(y) grain basis was tried first but always resolves
+ * into a regular plaid/banding interference pattern once tiled and viewed
+ * at an angle — value noise has no such periodic structure to alias into.)
+ * Tiled 8× across the terrain (each tile ≈ 12.5 m).
  */
 export function createLunarRegolithTexture(size = 512) {
   const canvas = document.createElement('canvas');
@@ -124,23 +221,22 @@ export function createLunarRegolithTexture(size = 512) {
   const img  = ctx.createImageData(size, size);
   const d    = img.data;
 
-  // Seamless frequencies: k × 2π / size → at x=size wraps back to x=0 exactly
-  const TP = Math.PI * 2;
-  const f1 = TP *   7 / size;   // coarse grain
-  const f2 = TP *  19 / size;   // medium grain
-  const f3 = TP *  43 / size;   // fine grain
-  const f4 = TP *  89 / size;   // very fine
-  const f5 = TP * 181 / size;   // micro
-  const f6 = TP * 359 / size;   // ultra fine
-
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
       const i = (py * size + px) * 4;
-      // Flat neon silver-grey — no visible pattern, just uniform colour
-      // R:G:B = 185:194:204 → cool blue-tinted bright grey (neon grey)
-      d[i]   = 185;
-      d[i+1] = 194;
-      d[i+2] = 204;
+
+      let grain = 0;
+      for (const o of REGOLITH_OCTAVES) {
+        const u = (px / size) * o.cells, v = (py / size) * o.cells;
+        grain += (seamlessValueNoise(u, v, o.cells, o.seed) - 0.5) * o.amp;
+      }
+
+      // Base neon silver-grey (cool blue-tinted bright grey) ± grain
+      // R:G:B = 185:194:204, same grain applied to all channels so the
+      // cool tint balance is preserved, just clamped to a valid byte.
+      d[i]   = Math.max(0, Math.min(255, 185 + grain));
+      d[i+1] = Math.max(0, Math.min(255, 194 + grain));
+      d[i+2] = Math.max(0, Math.min(255, 204 + grain));
       d[i+3] = 255;
     }
   }
