@@ -1,0 +1,11 @@
+# artifacts/mockup-sandbox/src/.generated/mockup-components.ts is written by
+# mockupPreviewPlugin.ts via fs.writeFileSync(), which always emits raw LF —
+# Node does not apply any line-ending translation on write. The committed
+# blob is LF too. Without this pin, core.autocrlf=true (see .git/config)
+# rewrites the file to CRLF on every checkout; the next `npm run build` then
+# regenerates it (mockupPreviewPlugin.ts always writes on its first refresh
+# per process, whether or not the discovered mockup list actually changed),
+# flipping it back to LF. Net effect: a content-free CRLF-only diff on every
+# build. Pinning eol=lf here matches what the generator actually produces,
+# so checkout and build agree and `git status` stays clean.
+artifacts/mockup-sandbox/src/.generated/* text eol=lf
