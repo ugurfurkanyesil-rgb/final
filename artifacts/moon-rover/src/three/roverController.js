@@ -1,7 +1,8 @@
 /**
  * Rover Controller
  * Keyboard + autonomous path-following physics.
- * Hard crater/debris collision guard — rover NEVER enters a crater.
+ * Hard crater collision guard — rover NEVER enters a crater. Debris has no
+ * physical collision; it is a pathfinding cost term only (pathfinder.js).
  */
 
 import { useRef, useEffect, useCallback } from 'react';

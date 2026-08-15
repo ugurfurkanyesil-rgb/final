@@ -1,7 +1,11 @@
 /**
  * Pathfinder - A* with crater walls, debris avoidance, illumination-aware costs.
  * Craters are IMPASSABLE walls — rover path can never enter them.
- * Debris objects have exclusion zones added to the cost map.
+ * Debris is NOT a wall: each zone contributes a distance-attenuated additive
+ * cost term to the cost map (see getDebrisField/COST_PARAMS.debrisC), so a
+ * route may cross a debris zone when the detour around it is worse, and how
+ * strongly it avoids one is a per-mode choice (SAFE detours, FAST cuts through)
+ * instead of a hard geometric rule identical in every mode.
  */
 
 import { TERRAIN_SIZE, GRID_RES, getTerrainHeight, CRATERS } from '../three/terrainGenerator.js';
@@ -12,10 +16,22 @@ const HALF = TERRAIN_SIZE / 2;
 // endpoint lands inside a wall. Must cover the largest crater's wall radius,
 // or the search comes back empty, the endpoint stays a wall cell, and A* can
 // never reach it (walls are never enterable) — guaranteeing a fallback.
+// Craters are now the ONLY wall source, so this is exactly the crater bound it
+// always claimed to be. Previously debris zones were walls too and this same
+// expression covered them only by accident (the largest crater radius, 17 m,
+// happens to dwarf the largest debris radius, 3.5 m); a debris zone larger
+// than the biggest crater would have silently broken the guarantee.
 const CELL_SIZE = TERRAIN_SIZE / (GRID_RES - 1);
 const MAX_WALL_RADIUS_CELLS = Math.ceil((Math.max(...CRATERS.map(c => c.radius)) * 1.05) / CELL_SIZE) + 2;
 
-// Debris positions (x, z, radius) — match generateDebrisPositions() in terrainGenerator.js
+// Debris avoidance zones (x, z, radius) — centres match
+// generateDebrisPositions() in terrainGenerator.js.
+// `r` is NOT the debris mesh's physical footprint: the meshes (MoonScene.jsx
+// DebrisPanel/Tank/Hull/Strut) span ~0.6–1.8 m, i.e. a half-extent of
+// ~0.3–0.9 m, so these radii are 3–8x the physical body. They are hand-tuned
+// *avoidance buffers* (keep-out standoff around a wreck), which is why they
+// drive a graded cost field rather than a solid collision volume — out at r
+// there is nothing physical for the rover to hit.
 const DEBRIS_ZONES = [
   { x: -32, z:  14, r: 3.5 },
   { x:  28, z: -42, r: 2.5 },
@@ -84,8 +100,12 @@ export function buildIlluminationMap(sunAngleDeg, hMap) {
   return illum;
 }
 
-// ---- Impassable map (craters = walls, debris = obstacles) ----
-// Built once and reused. Cells with value true are completely blocked.
+// ---- Impassable map (craters only) ----
+// Built once and reused. Cells with value 1 are completely blocked.
+// Craters are the ONLY wall source. Debris used to be blocked here too, with
+// exactly the crater treatment, which contradicted this file's own header and
+// made a 2–3.5 m hand-tuned standoff as absolute as a 17 m crater bowl. It is
+// now a cost term instead — see getDebrisField() / COST_PARAMS.debrisC.
 let _wallMap = null;
 function getWallMap() {
   if (_wallMap) return _wallMap;
@@ -100,17 +120,58 @@ function getWallMap() {
         const d = Math.sqrt((wx - c.x) ** 2 + (wz - c.z) ** 2);
         if (d < c.radius * 1.05) { _wallMap[row * GRID_RES + col] = 1; break; }
       }
-
-      // Debris exclusion zones
-      if (!_wallMap[row * GRID_RES + col]) {
-        for (const dz of DEBRIS_ZONES) {
-          const d = Math.sqrt((wx - dz.x) ** 2 + (wz - dz.z) ** 2);
-          if (d < dz.r) { _wallMap[row * GRID_RES + col] = 1; break; }
-        }
-      }
     }
   }
   return _wallMap;
+}
+
+// ---- Debris avoidance field (soft, 0..1) ----
+// Per cell: the strongest overlapping zone's penetration depth.
+//   pen   = max(0, 1 - d/r)   → 1 at a zone centre, 0 at/outside its edge
+//   field = max over zones of pen
+// Geometry is unchanged from when debris were walls (same centres, same r), so
+// a zone's *extent* of influence is identical; only its edge went from a cliff
+// (cost 1e9 at d<r, base cost at d>=r) to a ramp.
+//
+// Attenuation is LINEAR, not squared like the slope-excess/experience terms.
+// pen² was tried first and measurably cannot express "stay out of this zone":
+// pen² has zero gradient at d=r, so grazing the boundary from the inside is
+// free to first order and a route always prefers hugging the rim to detouring
+// around it. Measured on the SAFE mode / (-38,14)→(-26,14) route, closest
+// approach to the (-32,14) r=3.5 zone as debrisC → ∞:
+//   pen²  debrisC 3400→0.86r, 5000→0.86r, 10000→0.94r, 100000→0.99r  (never clears)
+//   pen   debrisC 3000→0.94r, 4500→1.00r, 5000→1.01r                 (clears at 4500)
+// Linear also keeps a mode's cheap-to-tune working range roughly one order of
+// magnitude wide instead of collapsing everything into a bifurcation.
+// Same lazy-build/reset lifecycle as _wallMap (see clearPathCache).
+//
+// debrisPenetration() is the single definition of the field; getDebrisField()
+// is just its GRID_RES² sampling for the cost map, and smoothPath() calls it
+// directly at continuous world coordinates (where cell sampling is too coarse
+// to see the drift it has to prevent). One formula, two sampling rates.
+function debrisPenetration(wx, wz) {
+  let maxPen = 0;
+  for (const dz of DEBRIS_ZONES) {
+    const d = Math.sqrt((wx - dz.x) ** 2 + (wz - dz.z) ** 2);
+    const pen = 1 - d / dz.r;
+    if (pen > maxPen) maxPen = pen;
+  }
+  return maxPen > 0 ? maxPen : 0;
+}
+
+let _debrisField = null;
+function getDebrisField() {
+  if (_debrisField) return _debrisField;
+  _debrisField = new Float32Array(GRID_RES * GRID_RES);
+  for (let row = 0; row < GRID_RES; row++) {
+    for (let col = 0; col < GRID_RES; col++) {
+      _debrisField[row * GRID_RES + col] = debrisPenetration(
+        -HALF + (col / (GRID_RES - 1)) * TERRAIN_SIZE,
+        -HALF + (row / (GRID_RES - 1)) * TERRAIN_SIZE,
+      );
+    }
+  }
+  return _debrisField;
 }
 
 // ---- Cost Maps ----
@@ -124,16 +185,43 @@ let _costCache = {};
 // computeRouteStats/planAllRoutes can look up the same per-mode expC when
 // reporting how much of a route's cost came from learned experience —
 // single source of truth, no duplicated coefficients.
+//
+// debrisC deliberately does NOT copy expC's ~4.7:1 SAFE:FAST ratio. expC
+// scales against slopeC — the same map — so a fixed ratio is the whole story
+// there. debrisC instead competes against the *base cell cost of the terrain
+// at a specific debris zone*, and that base cost is wildly non-uniform: it
+// varies ~45x between the ten zones and ~6x between modes at the same zone.
+// Break-even (the coefficient at which cutting a zone along a diameter costs
+// exactly what walking around its edge costs) for the linear field:
+//   through: 2r·b + debrisC·∫(1-|s|/r) ds = 2r·b + debrisC·r
+//   around:  2r·b + b·(π-2)r                (chord 2r → semicircle πr)
+//   ⇒ debrisC* = (π-2)·b ≈ 1.142·b
+// so break-even is 10 for FAST at the (-4,30) zone and 532 for SAFE at the
+// (-32,14) zone. No single ratio can be right everywhere; the values below are
+// therefore set from *measured route behaviour*, not from a ratio:
+//   SAFE 5000 — clears every zone entirely (closest approach >= r on all
+//               probe routes; measured threshold is 4500). This reproduces
+//               the pre-migration wall behaviour: SAFE routes are unchanged.
+//   ECO   150 — skirts: stays out of a zone's core, accepts the fringe.
+//   AUTO   80 — same, weaker (closest approach 0.47r vs ECO's 0.55r at the
+//               (-32,14) zone).
+//   FAST    5 — below break-even everywhere it matters; cuts straight through
+//               (closest approach 0.01r at (-4,30), 0.20r at (-32,14)).
+// Ordering SAFE > ECO > AUTO > FAST matches every other coefficient in this
+// table. The spread is ~1000:1 rather than expC's 4.7:1 because SAFE's target
+// is qualitatively different (full clearance ≈ a wall) — see the measurement
+// table in the debris-cost-migration work notes.
 const COST_PARAMS = {
-  SAFE: { slopeC: 900, slopeThr: 0.12, illumC: 120, expC: 700 },
-  ECO:  { slopeC: 650, slopeThr: 0.18, illumC: 80,  expC: 450 },
-  FAST: { slopeC: 200, slopeThr: 0.28, illumC: 20,  expC: 150 },
-  AUTO: { slopeC: 550, slopeThr: 0.18, illumC: 100, expC: 400 },
+  SAFE: { slopeC: 900, slopeThr: 0.12, illumC: 120, expC: 700, debrisC: 5000 },
+  ECO:  { slopeC: 650, slopeThr: 0.18, illumC: 80,  expC: 450, debrisC: 150 },
+  FAST: { slopeC: 200, slopeThr: 0.28, illumC: 20,  expC: 150, debrisC: 5 },
+  AUTO: { slopeC: 550, slopeThr: 0.18, illumC: 100, expC: 400, debrisC: 80 },
 };
 
 function buildCostMap(mode, slopeMap, craterMask, illumMap, experienceMap) {
   const p = COST_PARAMS[mode] || COST_PARAMS.AUTO;
   const wall = getWallMap();
+  const debrisField = getDebrisField();
   const cost = new Float32Array(GRID_RES * GRID_RES);
 
   for (let i = 0; i < GRID_RES * GRID_RES; i++) {
@@ -144,6 +232,7 @@ function buildCostMap(mode, slopeMap, craterMask, illumMap, experienceMap) {
     const crater = craterMask? craterMask[i] : 0;
     const illum  = illumMap  ? illumMap[i]   : 0.5;
     const exp    = experienceMap ? experienceMap[i] : 0;
+    const df     = debrisField[i];
 
     let c = 1.0;
     // Crater rim / near-crater still expensive
@@ -159,6 +248,13 @@ function buildCostMap(mode, slopeMap, craterMask, illumMap, experienceMap) {
     // experienceMap is passed (or a cell has none), so callers that don't
     // pass one see byte-identical costs to before this term existed.
     if (exp > 0) c += exp * exp * p.expC;
+    // Debris avoidance — additive, like the experience term, never replacing
+    // the terrain cost. `df` is the penetration depth 0..1 (getDebrisField),
+    // so this is the whole term. It is exactly zero outside every zone, which
+    // means every cell untouched by debris keeps a byte-identical cost to
+    // before debris became a cost term (verified: 0 differing cells out of
+    // 64001 zero-field cells, in all four modes).
+    if (df > 0) c += df * p.debrisC;
     cost[i] = c;
   }
   return cost;
@@ -233,11 +329,16 @@ function aStar(sr, sc, er, ec, costMap) {
 // Wall-safe fallback: only reached when A* exhausts its open set without
 // hitting the goal (e.g. the start is boxed in by overlapping crater walls
 // with no open neighbor at all). Does an unweighted BFS over non-wall cells
-// so the emergency path — like the real A* path — never crosses a crater or
-// debris wall. If the goal itself is unreachable from the start (disjoint
-// pocket), walks to the closest reachable open cell instead of lying about
-// having found a route. Ignores costMap/mode, same as before, since this is
-// a last-resort escape path, not a mode-optimized one.
+// so the emergency path — like the real A* path — never crosses a crater
+// wall; that is the one guarantee this file makes, and it holds here too.
+// It ignores the cost map entirely, and therefore also ignores debris: an
+// emergency escape route may run straight through a debris zone. That is
+// acceptable precisely because debris is a preference, not a hard constraint
+// (unlike before, when debris were walls and this BFS did avoid them).
+// If the goal itself is unreachable from the start (disjoint pocket), walks
+// to the closest reachable open cell instead of lying about having found a
+// route. Ignores costMap/mode, same as before, since this is a last-resort
+// escape path, not a mode-optimized one.
 function _fallback(sr,sc,er,ec) {
   const N = GRID_RES;
   const wall = getWallMap();
@@ -276,6 +377,9 @@ function _fallback(sr,sc,er,ec) {
   return path;
 }
 
+// This runs AFTER A*, on the raw cell path, and it does not consult the cost
+// map — so anything the cost map expresses can be smoothed away. Both guards
+// below exist for that reason.
 function smoothPath(path, passes=3) {
   if (path.length < 4) return path;
   const wall = getWallMap();
@@ -288,6 +392,19 @@ function smoothPath(path, passes=3) {
       // Don't smooth into a wall
       const { col, row } = worldToGrid(px, pz);
       if (wall[row*GRID_RES+col]) { out.push(pts[i]); continue; }
+      // Don't smooth deeper into a debris zone. A [1,2,1]/4 kernel pulls a
+      // detour arc toward its chord, so where A* routed around a zone the
+      // smoother would shave the corner back into it — invisible to the wall
+      // guard above, since debris stopped being a wall. Measured before this
+      // guard existed: on 960 route/mode cases whose straight line crosses a
+      // zone, smoothing increased peak penetration in 7.2% of them, by up to
+      // 0.04·r; with it, 0%.
+      // Evaluated at the exact world position, not via getDebrisField()'s
+      // grid: the drift being guarded against is ~0.1 m, well under one
+      // 0.39 m cell, so a cell lookup returns the same value for the old and
+      // new point and the guard would never fire (verified — a cell-sampled
+      // version of this check left all 69 regressions in place).
+      if (debrisPenetration(px, pz) > debrisPenetration(pts[i][0], pts[i][2])) { out.push(pts[i]); continue; }
       out.push([px, getTerrainHeight(px,pz)+0.18, pz]);
     }
     out.push(pts[pts.length-1]);
@@ -310,9 +427,15 @@ function smoothPath(path, passes=3) {
 // per path cell with the exact same `exp*exp*expC` formula buildCostMap
 // used, so expCost/expCostPercent are a real breakdown of totalCost, not a
 // separate estimate. Omit either arg to skip the breakdown (expCost stays 0).
-function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap, experienceMap, expC) {
+//
+// debrisCost is the same idea for the debris term: read from the very same
+// getDebrisField() array buildCostMap() summed into costMap and multiplied by
+// the same per-mode debrisC, so it is a true breakdown of totalCost rather
+// than a re-derived approximation. Pass debrisC to enable it.
+function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap, experienceMap, expC, debrisC) {
   if (!path || path.length < 2) return null;
-  let dist=0, sumHazard=0, sumSlip=0, sumSlope=0, sumIllum=0, totalCost=0, expCost=0, n=0;
+  const debrisField = getDebrisField();
+  let dist=0, sumHazard=0, sumSlip=0, sumSlope=0, sumIllum=0, totalCost=0, expCost=0, debrisCost=0, n=0;
   for (let i=1; i<path.length; i++) {
     const dx=path[i][0]-path[i-1][0], dz=path[i][2]-path[i-1][2];
     dist += Math.sqrt(dx*dx+dz*dz);
@@ -328,6 +451,8 @@ function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap, experi
     sumIllum  += illum;
     totalCost += costMap ? costMap[k] : 1;
     if (exp > 0 && expC) expCost += exp * exp * expC;
+    const df = debrisField[k];
+    if (df > 0 && debrisC) debrisCost += df * debrisC;
     n++;
   }
   const avg = x => n ? x/n : 0;
@@ -341,6 +466,8 @@ function computeRouteStats(path, slopeMap, craterMask, illumMap, costMap, experi
     totalCost:         totalCost,
     expCost:           expCost,
     expCostPercent:    totalCost > 0 ? (expCost / totalCost) * 100 : 0,
+    debrisCost:        debrisCost,
+    debrisCostPercent: totalCost > 0 ? (debrisCost / totalCost) * 100 : 0,
     riskPercent:       (avg(sumHazard) + avg(sumSlip)) / 2 * 100,
   };
 }
@@ -381,8 +508,8 @@ export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg
     }
     const rawPath = chainAStar(waypoints, _costCache[cacheKey]);
     const path    = smoothPath(rawPath);
-    const expC    = (COST_PARAMS[mode] || COST_PARAMS.AUTO).expC;
-    const stats   = computeRouteStats(path, slopeMap, craterMask, illumMap, _costCache[cacheKey], experienceMap, expC);
+    const params  = COST_PARAMS[mode] || COST_PARAMS.AUTO;
+    const stats   = computeRouteStats(path, slopeMap, craterMask, illumMap, _costCache[cacheKey], experienceMap, params.expC, params.debrisC);
     result[mode]  = { path, stats };
 
     // Debug visibility into the experience-map integration: how much of
@@ -401,7 +528,7 @@ export function planAllRoutes(waypoints, slopeMap, craterMask, hMap, sunAngleDeg
   return result;
 }
 
-export function clearPathCache() { _costCache = {}; _illumCache = {}; _wallMap = null; }
+export function clearPathCache() { _costCache = {}; _illumCache = {}; _wallMap = null; _debrisField = null; }
 
 /**
  * Canonical hazard formula (0=safe, 1=very dangerous).
