@@ -51,7 +51,7 @@ tespit edilen tutarsızlıklar, "ilk çözüm neden yanlıştı" dersleri, açı
 
 | Klasör | İçerik |
 |---|---|
-| `raw/` | Ham kaynaklar — **DEĞİŞTİRİLMEZ** |
+| `raw/` | Ham kaynaklar — içerik **DEĞİŞTİRİLMEZ**, ama agent yeni dosya ekleyebilir/versiyonlama şemasına göre yeniden adlandırabilir. Sadece `main`'in (veya kanonik branch'in) durumunu yakalar — WIP/unmerged/reddedilmiş branch'ler raw'a girmez, commit hash'iyle metinde referans verilir. |
 | `sources/` | Ham kaynakların özet sayfaları |
 | `entities/` | Somut şeyler (uygulama, monorepo) |
 | `concepts/` | Kavramlar (rota modları, terrain üretimi) |
@@ -63,8 +63,10 @@ tespit edilen tutarsızlıklar, "ilk çözüm neden yanlıştı" dersleri, açı
 
 ### Hard rules (vault CLAUDE.md'den)
 
-1. `raw/` dokunulmazdır. İçindeki bir dosyada bug varsa onu düzeltme —
+1. `raw/`'daki **içerik** dokunulmazdır — bir dosyada bug varsa onu düzeltme,
    `bugs/` altına ayrı kayıt aç, `sources/` sayfasına çelişki notu düş.
+   Yeni dosya eklemek/yeniden adlandırmak serbest (kullanıcı da agent de
+   ekleyebilir); sadece var olan bir dosyanın içeriği asla değişmez/silinmez.
 2. Her iddia kaynaklıdır (hangi dosya, hangi ölçüm, hangi commit).
 3. Çelişki silinmez, işaretlenir.
 4. Sayfa silinmez, arşivlenir.

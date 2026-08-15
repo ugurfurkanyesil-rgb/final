@@ -56,6 +56,13 @@ Prosedür:
    işaret değişimi (çukur → tümsek gibi) var mı
 5. Geçici scriptleri temizle, ölçümleri belgele
 
+Kalibre edilen bir katsayı/eşik **heterojen bir popülasyona** (birden çok zon/durum/girdi,
+birbirinden belirgin farklı taban değerlere sahip) uygulanacaksa, "X davranışı garanti eder"
+gibi bir iddia yalnızca **popülasyonun tamamı** süpürülüp doğrulandıktan sonra yazılır — tek
+bir temsili örnekten genellenmez. Kabul testinde kullanılan örnek sayısı, kalibrasyonda
+kullanılan örnek sayısından az olamaz; aksi halde "tek rotada doğru, on zonun altısında yanlış"
+gibi bir iddia rapora sessizce sızar.
+
 Detay için `terrain-regression` skill'i.
 
 ## Doğrulama
